@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>THESEUS</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23000'/><text x='2' y='13' font-size='12' fill='%2300ff44'>T</text></svg>">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #000; color: #0f0; font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
+
+    #setup {
+      display: flex; flex-direction: column; align-items: center; gap: 24px;
+      max-width: 540px; width: 100%; padding: 32px;
+      background: rgba(0,30,0,0.92);
+      border: 2px solid #0f0;
+      box-shadow: 0 0 40px #0f04, inset 0 0 60px #0001;
+    }
+
+    h1 { font-size: 52px; letter-spacing: 10px; color: #0f0; text-shadow: 0 0 18px #0f0; }
+    .subtitle { color: #0a0; font-size: 13px; letter-spacing: 3px; }
+
+    .setting { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+    .setting label { color: #0a0; font-size: 13px; letter-spacing: 2px; }
+
+    .btn-group { display: flex; gap: 8px; }
+    .btn-group button {
+      padding: 8px 18px; background: transparent; border: 1px solid #0f0; color: #0f0;
+      font-family: inherit; font-size: 13px; cursor: pointer; transition: all .15s;
+      letter-spacing: 1px;
+    }
+    .btn-group button.active, .btn-group button:hover {
+      background: #0f0; color: #000; box-shadow: 0 0 10px #0f0;
+    }
+
+    #enemy-wrap { display: flex; align-items: center; gap: 14px; }
+    #enemy-count { width: 200px; accent-color: #0f0; }
+    #enemy-display { font-size: 24px; min-width: 24px; }
+
+    #start-btn {
+      margin-top: 8px; padding: 14px 48px;
+      background: transparent; border: 2px solid #0f0; color: #0f0;
+      font-family: inherit; font-size: 18px; letter-spacing: 4px;
+      cursor: pointer; transition: all .2s; text-transform: uppercase;
+    }
+    #start-btn:hover { background: #0f0; color: #000; box-shadow: 0 0 20px #0f0; }
+
+    .controls {
+      font-size: 11px; color: #060; text-align: center; line-height: 1.8;
+      border-top: 1px solid #030; padding-top: 12px; width: 100%;
+    }
+    .controls span { color: #0a0; }
+
+    .note { font-size: 10px; color: #040; text-align: center; }
+
+    canvas { display: none; cursor: crosshair; outline: none; }
+    canvas.locked { cursor: none; }
+    canvas:focus { outline: none; }
+
+    #loading {
+      display: none; position: fixed; inset: 0;
+      background: #000; flex-direction: column; align-items: center; justify-content: center;
+      gap: 24px; z-index: 50;
+    }
+    #loading h2 { font-size: 44px; letter-spacing: 10px; color: #0f0; text-shadow: 0 0 18px #0f0; }
+    #loading-msg { font-size: 14px; color: #0a0; letter-spacing: 3px; }
+    #loading-bar { width: 320px; height: 6px; background: #020; border: 1px solid #060; }
+    #loading-fill { height: 100%; width: 0%; background: #0f0; transition: width 0.25s ease; }
+  </style>
+</head>
+<body>
+
+<div id="setup">
+  <h1>THESEUS</h1>
+  <div class="subtitle">PROCEDURAL FIRST PERSON SHOOTER</div>
+
+  <div class="setting">
+    <label>MAP SIZE</label>
+    <div class="btn-group" id="size-group">
+      <button data-size="small">SMALL<br><small>32×32</small></button>
+      <button data-size="medium" class="active">MEDIUM<br><small>48×48</small></button>
+      <button data-size="large">LARGE<br><small>64×64</small></button>
+    </div>
+  </div>
+
+  <div class="setting">
+    <label>ENEMIES</label>
+    <div id="enemy-wrap">
+      <input type="range" id="enemy-count" min="1" max="5" value="3">
+      <span id="enemy-display">3</span>
+    </div>
+  </div>
+
+  <button id="start-btn">START MISSION</button>
+
+  <div class="controls">
+    <span>WASD</span> — Move &nbsp;|&nbsp; <span>Mouse</span> — Look &nbsp;|&nbsp; <span>Click / Space</span> — Shoot<br>
+    <span>E</span> — Use exit &nbsp;|&nbsp; <span>1–7</span> — Switch weapon &nbsp;|&nbsp; <span>R</span> — Restart<br><br>
+    WIN CONDITIONS:<br>
+    ⚔ <span>Domination</span> — kill all enemies &nbsp;|&nbsp;
+    ◆ <span>Exploration</span> — find all caches &nbsp;|&nbsp;
+    ⬡ <span>Escape</span> — reach the exit
+  </div>
+
+  <div class="note">⚠ Must be served from a local HTTP server (not file://)<br>
+    <code>python3 -m http.server 8080</code> then open localhost:8080</div>
+</div>
+
+<div id="loading">
+  <h2>THESEUS</h2>
+  <div id="loading-msg">GENERATING MAP...</div>
+  <div id="loading-bar"><div id="loading-fill"></div></div>
+</div>
+
+<canvas id="game" tabindex="0"></canvas>
+
+<script>
+  // Setup UI logic (runs before ES module)
+  let selectedSize = 'medium';
+
+  document.querySelectorAll('#size-group button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#size-group button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedSize = btn.dataset.size;
+    });
+  });
+
+  const slider = document.getElementById('enemy-count');
+  const display = document.getElementById('enemy-display');
+  slider.addEventListener('input', () => display.textContent = slider.value);
+
+  document.getElementById('start-btn').addEventListener('click', () => {
+    window.startGame({ mapSize: selectedSize, numEnemies: parseInt(slider.value) });
+  });
+</script>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>

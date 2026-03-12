@@ -1,0 +1,574 @@
+// ui.js — HUD, minimap, overlays
+import { SCREEN_W, SCREEN_H, HALF_W, HALF_H, FOV_TAN, WEAPONS, TECH_PREREQS, TECH_NODE_POS, MINION_STATS } from './constants.js';
+import { weaponNodeState } from './weapons.js';
+import { hasLOS } from './pathfinding.js';
+
+const NODE_W = 120, NODE_H = 48;
+// Overlay base offset (centered 700×500 box)
+const OVL_X = (SCREEN_W - 700) / 2;
+const OVL_Y = 55;
+
+// ─── Crosshair ────────────────────────────────────────────────────────────────
+
+export function renderCrosshair(ctx) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 1.5;
+  const cx = SCREEN_W / 2, cy = SCREEN_H / 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy);
+  ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── HUD ──────────────────────────────────────────────────────────────────────
+
+export function renderHUD(ctx, state) {
+  const { player, enemies, caches, exit } = state;
+
+  // --- Bottom-right: health ---
+  const bx = SCREEN_W - 215, by = SCREEN_H - 48;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(bx - 5, by - 5, 210, 40);
+
+  const hp = Math.max(0, player.health);
+  const hpFrac = hp / player.maxHealth;
+  const hpColor = hpFrac > 0.5 ? '#22cc44' : hpFrac > 0.25 ? '#ffaa00' : '#ee2222';
+  ctx.fillStyle = '#333';
+  ctx.fillRect(bx, by, 200, 18);
+  ctx.fillStyle = hpColor;
+  ctx.fillRect(bx, by, 200 * hpFrac, 18);
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bx, by, 200, 18);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 11px monospace';
+  ctx.fillText(`HP  ${hp}/${player.maxHealth}`, bx + 4, by + 13);
+
+  // --- Bottom-center: weapon ---
+  const wname = WEAPONS[player.activeWeapon]?.name || '';
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(SCREEN_W/2 - 90, SCREEN_H - 34, 180, 26);
+  ctx.fillStyle = '#ffee88';
+  ctx.font = 'bold 13px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`[ ${wname} ]`, SCREEN_W / 2, SCREEN_H - 16);
+  ctx.textAlign = 'left';
+
+  drawWeaponSprite(ctx, player.activeWeapon, state);
+
+  // --- Top bar: win conditions ---
+  const totalEnemies = enemies.length;
+  const deadEnemies  = enemies.filter(e => e.dead).length;
+  const lootedCaches = caches.filter(c => c.enemyLooted).length;
+  const foundCaches  = caches.filter(c => c.found && !c.enemyLooted).length;
+  const totalCaches  = caches.length - lootedCaches;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, SCREEN_W, 28);
+
+  ctx.font = '12px monospace';
+
+  // Domination
+  const livingEnemies = totalEnemies - deadEnemies;
+  const domDone = deadEnemies === totalEnemies && totalEnemies > 0;
+  ctx.fillStyle = domDone ? '#00ff44' : '#ff4444';
+  ctx.fillText(`⚔ ${deadEnemies}/${totalEnemies} KILLS`, 12, 18);
+
+  // Exploration
+  const expDone = totalCaches > 0 && foundCaches === totalCaches;
+  ctx.fillStyle = expDone ? '#00ff44' : lootedCaches > 0 ? '#ff8844' : '#ffcc00';
+  ctx.fillText(`◆ ${foundCaches}/${totalCaches} CACHES${lootedCaches > 0 ? ` [${lootedCaches} looted]` : ''}`, 180, 18);
+
+  // Escape
+  const nearExit = state.exit &&
+    Math.hypot(state.player.x - state.exit.x, state.player.y - state.exit.y) < 1.5;
+  ctx.fillStyle = nearExit ? '#00ff44' : '#88aaff';
+  ctx.fillText(`⬡ EXIT:${nearExit ? ' [E] ESCAPE' : ' NOT REACHED'}`, 340, 18);
+
+  // Minion count
+  const aliveMins = state.minions.filter(m => !m.dead).length;
+  ctx.fillStyle = '#aaddff';
+  ctx.fillText(`◉ MINIONS: ${aliveMins}`, 570, 18);
+}
+
+// Simple weapon sprite at bottom-center
+function drawWeaponSprite(ctx, weaponId, state) {
+  const bob = state.player.isMoving ? Math.sin(state.player.bobTimer) * 9 : 0;
+  const wx  = SCREEN_W / 2 + bob * 0.5;
+  const wy  = SCREEN_H - 100 + Math.abs(bob);
+
+  ctx.save();
+  ctx.fillStyle = WEAPONS[weaponId]?.color || '#aaa';
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2;
+
+  switch (weaponId) {
+    case 'pistol':
+      ctx.fillRect(wx - 10, wy, 28, 18); // grip
+      ctx.fillRect(wx + 8,  wy - 8, 36, 10); // barrel
+      break;
+    case 'shotgun':
+      ctx.fillRect(wx - 14, wy, 34, 22);
+      ctx.fillRect(wx + 12, wy - 5, 48, 8); ctx.fillRect(wx + 12, wy + 7, 48, 8);
+      break;
+    case 'smg':
+      ctx.fillRect(wx - 8, wy, 22, 16);
+      ctx.fillRect(wx + 8, wy - 6, 50, 8);
+      ctx.fillRect(wx + 2, wy + 14, 8, 14); // mag
+      break;
+    case 'rocket':
+      ctx.fillRect(wx - 12, wy, 30, 24);
+      ctx.beginPath(); ctx.ellipse(wx + 22, wy + 12, 18, 14, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#ff6600'; ctx.fillRect(wx + 38, wy + 8, 20, 8);
+      break;
+    case 'plasma':
+      ctx.fillRect(wx - 10, wy, 20, 18);
+      ctx.fillStyle = '#0044aa'; ctx.fillRect(wx + 8, wy - 8, 40, 14);
+      ctx.fillStyle = '#00aaff'; ctx.fillRect(wx + 44, wy - 4, 8, 6);
+      break;
+    case 'railgun':
+      ctx.fillRect(wx - 12, wy, 26, 18);
+      ctx.fillRect(wx + 10, wy - 3, 60, 6);
+      ctx.fillStyle = '#00ffcc'; ctx.fillRect(wx + 10, wy + 5, 60, 4);
+      break;
+    case 'bfg':
+      ctx.fillRect(wx - 16, wy - 4, 32, 28);
+      ctx.fillStyle = '#00aa00';
+      ctx.beginPath(); ctx.ellipse(wx + 20, wy + 10, 24, 24, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#00ff44';
+      ctx.beginPath(); ctx.ellipse(wx + 20, wy + 10, 14, 14, 0, 0, Math.PI*2); ctx.fill();
+      break;
+    default:
+      ctx.fillRect(wx - 10, wy, 28, 18);
+  }
+  ctx.restore();
+}
+
+// ─── Minimap ──────────────────────────────────────────────────────────────────
+
+export function renderMinimap(ctx, state) {
+  const { map, explored, player, enemies, minions, caches, exit } = state;
+  const scale = Math.max(1, Math.min(4, Math.floor(200 / Math.max(map.w, map.h))));
+  const mw = map.w * scale, mh = map.h * scale;
+  const mx = 10, my = SCREEN_H - mh - 10;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillRect(mx - 2, my - 2, mw + 4, mh + 4);
+
+  for (let ty = 0; ty < map.h; ty++) {
+    for (let tx = 0; tx < map.w; tx++) {
+      if (!explored[ty * map.w + tx]) continue;
+      ctx.fillStyle = map.cells[ty * map.w + tx] !== 0 ? '#555' : '#1a1a1a';
+      ctx.fillRect(mx + tx * scale, my + ty * scale, scale, scale);
+    }
+  }
+
+  // Health packs
+  for (const hp of (state.healthPacks || [])) {
+    if (hp.collected) continue;
+    if (explored[Math.floor(hp.y) * map.w + Math.floor(hp.x)]) {
+      ctx.fillStyle = hp.size === 'large' ? '#ff4466' : '#ff88aa';
+      ctx.beginPath();
+      ctx.arc(mx + hp.x * scale, my + hp.y * scale, Math.max(2, scale * 0.8), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Caches (unfound)
+  for (const c of caches) {
+    if (c.found) continue;
+    if (explored[Math.floor(c.y) * map.w + Math.floor(c.x)]) {
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillRect(mx + c.x * scale - 2, my + c.y * scale - 2, 4, 4);
+    }
+  }
+
+  // Exit
+  if (exit && explored[Math.floor(exit.y) * map.w + Math.floor(exit.x)]) {
+    ctx.fillStyle = '#00ff66';
+    ctx.fillRect(mx + exit.x * scale - 3, my + exit.y * scale - 3, 6, 6);
+  }
+
+  // Enemies
+  for (const e of enemies) {
+    if (e.dead) continue;
+    if (explored[Math.floor(e.y) * map.w + Math.floor(e.x)]) {
+      ctx.fillStyle = '#ff3333';
+      ctx.beginPath();
+      ctx.arc(mx + e.x * scale, my + e.y * scale, Math.max(2, scale), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Minions
+  const minionColors = { scout: '#00eeff', guard: '#4466ff', hunter: '#bb44ff' };
+  for (const m of minions) {
+    if (m.dead) continue;
+    ctx.fillStyle = minionColors[m.minionType] || '#44aaff';
+    ctx.beginPath();
+    ctx.arc(mx + m.x * scale, my + m.y * scale, Math.max(2, scale), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Player arrow
+  const px = mx + player.x * scale, py = my + player.y * scale;
+  ctx.save();
+  ctx.translate(px, py);
+  ctx.rotate(player.angle);
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(7, 0); ctx.lineTo(-5, -3); ctx.lineTo(-5, 3);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+// ─── Cache prompt ─────────────────────────────────────────────────────────────
+
+// Returns { type: 'weapon'|'minion', id } for a click at (cx, cy), or null
+export function hitTestCachePrompt(cx, cy, state) {
+  const owned = state.player.weapons;
+
+  // Weapon nodes
+  for (const [id, pos] of Object.entries(TECH_NODE_POS)) {
+    const nx = OVL_X + pos.x - NODE_W / 2;
+    const ny = OVL_Y + pos.y - NODE_H / 2;
+    if (cx >= nx && cx <= nx + NODE_W && cy >= ny && cy <= ny + NODE_H) {
+      if (weaponNodeState(id, owned) === 'available') return { type: 'weapon', id };
+    }
+  }
+
+  // Minion buttons
+  const minionTypes = ['scout', 'guard', 'hunter'];
+  const mBY = OVL_Y + 415;
+  for (let i = 0; i < 3; i++) {
+    const bx = OVL_X + 70 + i * 195;
+    if (cx >= bx && cx <= bx + 170 && cy >= mBY && cy <= mBY + 70) {
+      return { type: 'minion', id: minionTypes[i] };
+    }
+  }
+  return null;
+}
+
+export function renderCachePrompt(ctx, state, mouse) {
+  // Dim overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+
+  ctx.fillStyle = 'rgba(10,15,10,0.95)';
+  ctx.fillRect(OVL_X - 10, OVL_Y - 15, 720, 510);
+  ctx.strokeStyle = '#00ff44';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(OVL_X - 10, OVL_Y - 15, 720, 510);
+
+  ctx.fillStyle = '#00ff44';
+  ctx.font = 'bold 18px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('CACHE FOUND — CHOOSE REWARD', SCREEN_W / 2, OVL_Y + 14);
+
+  ctx.fillStyle = '#666';
+  ctx.font = '12px monospace';
+  ctx.fillText('WEAPON TECH TREE', SCREEN_W / 2, OVL_Y + 34);
+  ctx.textAlign = 'left';
+
+  const owned = state.player.weapons;
+
+  // Draw connector lines first
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1.5;
+  const edges = [
+    ['pistol','shotgun'],['pistol','smg'],
+    ['shotgun','rocket'],['smg','plasma'],
+    ['rocket','bfg'],['plasma','railgun'],
+  ];
+  for (const [a, b] of edges) {
+    const pa = TECH_NODE_POS[a], pb = TECH_NODE_POS[b];
+    ctx.beginPath();
+    ctx.moveTo(OVL_X + pa.x, OVL_Y + pa.y + NODE_H / 2);
+    ctx.lineTo(OVL_X + pb.x, OVL_Y + pb.y - NODE_H / 2);
+    ctx.stroke();
+  }
+
+  // Draw weapon nodes
+  for (const [id, pos] of Object.entries(TECH_NODE_POS)) {
+    const ns  = weaponNodeState(id, owned);
+    const nx  = OVL_X + pos.x - NODE_W / 2;
+    const ny  = OVL_Y + pos.y - NODE_H / 2;
+    const hov = mouse && mx_in(mouse, nx, ny, NODE_W, NODE_H) && ns === 'available';
+
+    ctx.save();
+    if (ns === 'owned')      { ctx.fillStyle = '#0d2e12'; ctx.strokeStyle = '#00cc44'; }
+    else if (ns === 'available') { ctx.fillStyle = hov ? '#3a3a00' : '#222200'; ctx.strokeStyle = hov ? '#ffff66' : '#dddd00'; }
+    else                     { ctx.fillStyle = '#111'; ctx.strokeStyle = '#333'; }
+
+    if (hov) { ctx.shadowBlur = 12; ctx.shadowColor = '#ffff00'; }
+
+    ctx.lineWidth = 2;
+    ctx.fillRect(nx, ny, NODE_W, NODE_H);
+    ctx.strokeRect(nx, ny, NODE_W, NODE_H);
+    ctx.shadowBlur = 0;
+
+    const w = WEAPONS[id];
+    ctx.fillStyle = ns === 'locked' ? '#555' : ns === 'owned' ? '#00cc44' : '#ffee44';
+    ctx.font = `bold 11px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(w.name, OVL_X + pos.x, ny + 18);
+    ctx.fillStyle = ns === 'locked' ? '#444' : '#aaa';
+    ctx.font = '9px monospace';
+    ctx.fillText(`DMG:${w.damage}  ${w.fireRate}/s`, OVL_X + pos.x, ny + 34);
+    if (ns === 'owned')      ctx.fillText('✓ OWNED',     OVL_X + pos.x, ny + 44);
+    else if (ns === 'locked') ctx.fillText('🔒 LOCKED',   OVL_X + pos.x, ny + 44);
+    ctx.restore();
+    ctx.textAlign = 'left';
+  }
+
+  // Divider
+  ctx.strokeStyle = '#333';
+  ctx.beginPath();
+  ctx.moveTo(OVL_X - 10, OVL_Y + 395);
+  ctx.lineTo(OVL_X + 710, OVL_Y + 395);
+  ctx.stroke();
+
+  ctx.fillStyle = '#666';
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('— OR SPAWN A MINION —', SCREEN_W / 2, OVL_Y + 408);
+  ctx.textAlign = 'left';
+
+  // Minion buttons
+  const mBY = OVL_Y + 415;
+  const mTypes = ['scout', 'guard', 'hunter'];
+  for (let i = 0; i < 3; i++) {
+    const bx  = OVL_X + 70 + i * 195;
+    const st  = MINION_STATS[mTypes[i]];
+    const hov = mouse && mx_in(mouse, bx, mBY, 170, 70);
+    const [cr, cg, cb] = st.color;
+
+    ctx.save();
+    ctx.fillStyle = hov ? `rgba(${cr},${cg},${cb},0.22)` : `rgba(${cr},${cg},${cb},0.08)`;
+    ctx.strokeStyle = `rgb(${cr},${cg},${cb})`;
+    ctx.lineWidth = hov ? 2 : 1;
+    if (hov) { ctx.shadowBlur = 10; ctx.shadowColor = `rgb(${cr},${cg},${cb})`; }
+    ctx.fillRect(bx, mBY, 170, 70);
+    ctx.strokeRect(bx, mBY, 170, 70);
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = `rgb(${cr},${cg},${cb})`;
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(mTypes[i].toUpperCase(), bx + 85, mBY + 18);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '9px monospace';
+    ctx.fillText(`HP:${st.health}  SPD:${st.speed}`, bx + 85, mBY + 34);
+    ctx.fillText(st.desc, bx + 85, mBY + 48);
+    ctx.fillText('(Click to spawn)', bx + 85, mBY + 62);
+    ctx.restore();
+    ctx.textAlign = 'left';
+  }
+
+  ctx.fillStyle = '#555';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Click a highlighted node to unlock weapon. Click a minion to spawn it.', SCREEN_W/2, OVL_Y + 494);
+  ctx.textAlign = 'left';
+}
+
+function mx_in(m, x, y, w, h) {
+  return m && m.x >= x && m.x <= x + w && m.y >= y && m.y <= y + h;
+}
+
+// ─── Weapon / hit effects ─────────────────────────────────────────────────────
+
+export function renderEffects(ctx, state) {
+  if (!state.effects) return;
+  for (const eff of state.effects) {
+    const frac = eff.timer / eff.maxTimer; // 1 = fresh, 0 = expired
+    ctx.save();
+    switch (eff.type) {
+      case 'muzzle': {
+        const alpha = frac * 0.9;
+        ctx.globalAlpha = alpha;
+        const mx = SCREEN_W / 2 + 38, my = SCREEN_H - 78;
+        ctx.fillStyle = eff.color || '#ffff88';
+        ctx.beginPath();
+        ctx.ellipse(mx, my, 22 * frac, 10 * frac, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.ellipse(mx, my, 7 * frac, 5 * frac, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case 'hit': {
+        ctx.globalAlpha = frac * 0.9;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        const cx = SCREEN_W / 2, cy = SCREEN_H / 2;
+        const r = 14 * (1 - frac);
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+          ctx.lineTo(cx + Math.cos(a) * (r + 10), cy + Math.sin(a) * (r + 10));
+          ctx.stroke();
+        }
+        break;
+      }
+      case 'explode': {
+        ctx.globalAlpha = frac * 0.72;
+        const cx = SCREEN_W / 2, cy = SCREEN_H / 2 - 20;
+        const maxR = 90;
+        const r = maxR * (1 - frac);
+        ctx.strokeStyle = '#ff6600';
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#ffcc00';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2); ctx.stroke();
+        break;
+      }
+      case 'railBeam': {
+        ctx.globalAlpha = frac * 0.85;
+        ctx.strokeStyle = eff.color || '#00ffcc';
+        ctx.lineWidth = 3;
+        ctx.shadowBlur = 14;
+        ctx.shadowColor = eff.color || '#00ffcc';
+        ctx.beginPath();
+        ctx.moveTo(SCREEN_W / 2, SCREEN_H - 55);
+        ctx.lineTo(SCREEN_W / 2, 0);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = frac * 0.4;
+        ctx.beginPath();
+        ctx.moveTo(SCREEN_W / 2 - 12, SCREEN_H - 55);
+        ctx.lineTo(SCREEN_W / 2 - 12, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(SCREEN_W / 2 + 12, SCREEN_H - 55);
+        ctx.lineTo(SCREEN_W / 2 + 12, 0);
+        ctx.stroke();
+        break;
+      }
+      case 'playerHit': {
+        ctx.globalAlpha = frac * 0.55;
+        const grd = ctx.createRadialGradient(
+          SCREEN_W / 2, SCREEN_H / 2, SCREEN_H * 0.22,
+          SCREEN_W / 2, SCREEN_H / 2, SCREEN_H * 0.78);
+        grd.addColorStop(0, 'rgba(180,0,0,0)');
+        grd.addColorStop(1, 'rgba(220,0,0,0.9)');
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+        break;
+      }
+    }
+    ctx.restore();
+  }
+}
+
+// ─── Enemy health bars ────────────────────────────────────────────────────────
+
+function projectEnemy(ex, ey, player) {
+  const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
+  const plX  = -dirY * FOV_TAN,        plY  = dirX * FOV_TAN;
+  const sx = ex - player.x, sy = ey - player.y;
+  const invDet = 1 / (plX * dirY - dirX * plY);
+  const tX = invDet * (dirY * sx - dirX * sy);
+  const tY = invDet * (-plY * sx + plX * sy);
+  if (tY <= 0.25) return null;
+  const screenX = HALF_W * (1 + tX / tY);
+  const sprH    = SCREEN_H / tY;
+  const topY    = HALF_H - sprH / 2;
+  return { screenX, topY, sprH, tY };
+}
+
+export function renderEnemyHealthBars(ctx, state) {
+  const { player, enemies, map } = state;
+  ctx.save();
+  for (const e of enemies) {
+    if (e.dead) continue;
+    if (!hasLOS(state.cells, map.w, map.h, player.x, player.y, e.x, e.y)) continue;
+    const proj = projectEnemy(e.x, e.y, player);
+    if (!proj) continue;
+    const { screenX, topY, sprH } = proj;
+    if (screenX < 20 || screenX > SCREEN_W - 20) continue;
+
+    const barW = Math.max(24, Math.min(72, sprH * 0.75));
+    const barH = 5;
+    const bx   = screenX - barW / 2;
+    const by   = topY - barH - 4;
+    if (by < 4) continue;
+
+    const frac   = Math.max(0, e.health / e.maxHealth);
+    const barCol = frac > 0.5 ? '#22cc44' : frac > 0.25 ? '#ffaa00' : '#ee2222';
+
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
+    ctx.fillStyle = '#222';
+    ctx.fillRect(bx, by, barW, barH);
+    ctx.fillStyle = barCol;
+    ctx.fillRect(bx, by, barW * frac, barH);
+  }
+  ctx.restore();
+}
+
+// ─── Victory / Game Over ──────────────────────────────────────────────────────
+
+const VICTORY_MSGS = {
+  domination: { title: 'DOMINATION VICTORY', sub: 'All enemies destroyed.', color: '#ff4444' },
+  exploration: { title: 'EXPLORATION VICTORY', sub: 'All caches recovered.', color: '#ffcc00' },
+  escape:      { title: 'ESCAPE VICTORY',      sub: 'You escaped the facility.', color: '#00ff88' },
+};
+
+export function renderVictory(ctx, state) {
+  const info = VICTORY_MSGS[state.victoryType] || VICTORY_MSGS.escape;
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = info.color;
+  ctx.font = 'bold 56px monospace';
+  ctx.fillText(info.title, SCREEN_W / 2, SCREEN_H / 2 - 40);
+
+  ctx.fillStyle = '#ccc';
+  ctx.font = '22px monospace';
+  ctx.fillText(info.sub, SCREEN_W / 2, SCREEN_H / 2 + 10);
+
+  ctx.fillStyle = '#888';
+  ctx.font = '16px monospace';
+  ctx.fillText(`Enemies: ${state.player.kills}  Caches: ${state.caches.filter(c=>c.found).length}/${state.caches.length}`,
+    SCREEN_W / 2, SCREEN_H / 2 + 50);
+  ctx.fillText('Press R to restart', SCREEN_W / 2, SCREEN_H / 2 + 90);
+  ctx.textAlign = 'left';
+}
+
+export function renderClickToPlay(ctx) {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#00ff44';
+  ctx.font = 'bold 30px monospace';
+  ctx.fillText('CLICK TO PLAY', SCREEN_W / 2, SCREEN_H / 2 - 10);
+  ctx.fillStyle = '#557755';
+  ctx.font = '14px monospace';
+  ctx.fillText('Locks mouse for look controls', SCREEN_W / 2, SCREEN_H / 2 + 22);
+  ctx.fillText('WASD move  ·  Space shoot  ·  E interact', SCREEN_W / 2, SCREEN_H / 2 + 44);
+  ctx.textAlign = 'left';
+}
+
+export function renderGameOver(ctx, state) {
+  ctx.fillStyle = 'rgba(0,0,0,0.8)';
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#cc0000';
+  ctx.font = 'bold 60px monospace';
+  ctx.fillText('YOU DIED', SCREEN_W / 2, SCREEN_H / 2 - 30);
+
+  ctx.fillStyle = '#888';
+  ctx.font = '18px monospace';
+  ctx.fillText(`Enemies killed: ${state.player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 20);
+  ctx.fillText('Press R to restart', SCREEN_W / 2, SCREEN_H / 2 + 55);
+  ctx.textAlign = 'left';
+}
