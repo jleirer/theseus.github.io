@@ -74,23 +74,23 @@ export function renderHUD(ctx, state) {
   const livingEnemies = totalEnemies - deadEnemies;
   const domDone = deadEnemies === totalEnemies && totalEnemies > 0;
   ctx.fillStyle = domDone ? '#00ff44' : '#ff4444';
-  ctx.fillText(`⚔ ${deadEnemies}/${totalEnemies} KILLS`, 12, 18);
+  ctx.fillText(`⚔ ${deadEnemies}/${totalEnemies} SLAIN`, 12, 18);
 
   // Exploration
   const expDone = totalCaches > 0 && foundCaches === totalCaches;
   ctx.fillStyle = expDone ? '#00ff44' : lootedCaches > 0 ? '#ff8844' : '#ffcc00';
-  ctx.fillText(`◆ ${foundCaches}/${totalCaches} CACHES${lootedCaches > 0 ? ` [${lootedCaches} looted]` : ''}`, 180, 18);
+  ctx.fillText(`◆ ${foundCaches}/${totalCaches} RELICS${lootedCaches > 0 ? ` [${lootedCaches} taken]` : ''}`, 180, 18);
 
   // Escape
   const nearExit = state.exit &&
     Math.hypot(state.player.x - state.exit.x, state.player.y - state.exit.y) < 1.5;
   ctx.fillStyle = nearExit ? '#00ff44' : '#88aaff';
-  ctx.fillText(`⬡ EXIT:${nearExit ? ' [E] ESCAPE' : ' NOT REACHED'}`, 340, 18);
+  ctx.fillText(`⬡ EXIT:${nearExit ? ' [E] FLEE' : ' NOT REACHED'}`, 340, 18);
 
   // Minion count
   const aliveMins = state.minions.filter(m => !m.dead).length;
   ctx.fillStyle = '#aaddff';
-  ctx.fillText(`◉ MINIONS: ${aliveMins}`, 570, 18);
+  ctx.fillText(`◉ ALLIES: ${aliveMins}`, 570, 18);
 }
 
 // Simple weapon sprite at bottom-center
@@ -251,7 +251,7 @@ export function hitTestCachePrompt(cx, cy, state) {
   return null;
 }
 
-export function renderCachePrompt(ctx, state, mouse) {
+export function renderCachePrompt(ctx, state, mouse, keyboardSel) {
   // Dim overlay
   ctx.fillStyle = 'rgba(0,0,0,0.78)';
   ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
@@ -265,7 +265,7 @@ export function renderCachePrompt(ctx, state, mouse) {
   ctx.fillStyle = '#00ff44';
   ctx.font = 'bold 18px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('CACHE FOUND — CHOOSE REWARD', SCREEN_W / 2, OVL_Y + 14);
+  ctx.fillText('RELIC CHAMBER — CHOOSE YOUR REWARD', SCREEN_W / 2, OVL_Y + 14);
 
   ctx.fillStyle = '#666';
   ctx.font = '12px monospace';
@@ -296,13 +296,15 @@ export function renderCachePrompt(ctx, state, mouse) {
     const nx  = OVL_X + pos.x - NODE_W / 2;
     const ny  = OVL_Y + pos.y - NODE_H / 2;
     const hov = mouse && mx_in(mouse, nx, ny, NODE_W, NODE_H) && ns === 'available';
+    const ksel = keyboardSel === id;
 
     ctx.save();
-    if (ns === 'owned')      { ctx.fillStyle = '#0d2e12'; ctx.strokeStyle = '#00cc44'; }
-    else if (ns === 'available') { ctx.fillStyle = hov ? '#3a3a00' : '#222200'; ctx.strokeStyle = hov ? '#ffff66' : '#dddd00'; }
-    else                     { ctx.fillStyle = '#111'; ctx.strokeStyle = '#333'; }
+    if (ns === 'owned')          { ctx.fillStyle = '#0d2e12'; ctx.strokeStyle = '#00cc44'; }
+    else if (ns === 'available') { ctx.fillStyle = hov || ksel ? '#3a3a00' : '#222200'; ctx.strokeStyle = hov || ksel ? '#ffff66' : '#dddd00'; }
+    else                         { ctx.fillStyle = ksel ? '#1a1400' : '#111'; ctx.strokeStyle = ksel ? '#886600' : '#333'; }
 
-    if (hov) { ctx.shadowBlur = 12; ctx.shadowColor = '#ffff00'; }
+    if (hov || ksel) { ctx.shadowBlur = 12; ctx.shadowColor = '#ffff00'; }
+    if (ksel) { ctx.lineWidth = 2.5; }
 
     ctx.lineWidth = 2;
     ctx.fillRect(nx, ny, NODE_W, NODE_H);
@@ -342,14 +344,15 @@ export function renderCachePrompt(ctx, state, mouse) {
   for (let i = 0; i < 3; i++) {
     const bx  = OVL_X + 70 + i * 195;
     const st  = MINION_STATS[mTypes[i]];
-    const hov = mouse && mx_in(mouse, bx, mBY, 170, 70);
+    const hov  = mouse && mx_in(mouse, bx, mBY, 170, 70);
+    const ksel = keyboardSel === `minion${i}`;
     const [cr, cg, cb] = st.color;
 
     ctx.save();
-    ctx.fillStyle = hov ? `rgba(${cr},${cg},${cb},0.22)` : `rgba(${cr},${cg},${cb},0.08)`;
-    ctx.strokeStyle = `rgb(${cr},${cg},${cb})`;
-    ctx.lineWidth = hov ? 2 : 1;
-    if (hov) { ctx.shadowBlur = 10; ctx.shadowColor = `rgb(${cr},${cg},${cb})`; }
+    ctx.fillStyle = hov || ksel ? `rgba(${cr},${cg},${cb},0.22)` : `rgba(${cr},${cg},${cb},0.08)`;
+    ctx.strokeStyle = ksel ? '#ffffff' : `rgb(${cr},${cg},${cb})`;
+    ctx.lineWidth = hov || ksel ? 2 : 1;
+    if (hov || ksel) { ctx.shadowBlur = 10; ctx.shadowColor = ksel ? '#ffffff' : `rgb(${cr},${cg},${cb})`; }
     ctx.fillRect(bx, mBY, 170, 70);
     ctx.strokeRect(bx, mBY, 170, 70);
     ctx.shadowBlur = 0;
@@ -370,7 +373,7 @@ export function renderCachePrompt(ctx, state, mouse) {
   ctx.fillStyle = '#555';
   ctx.font = '10px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('Click a highlighted node to unlock weapon. Click a minion to spawn it.', SCREEN_W/2, OVL_Y + 494);
+  ctx.fillText('Click or use Arrow Keys + Enter/Space to select. Highlighted nodes are available.', SCREEN_W/2, OVL_Y + 494);
   ctx.textAlign = 'left';
 }
 
@@ -515,10 +518,30 @@ export function renderEnemyHealthBars(ctx, state) {
 // ─── Victory / Game Over ──────────────────────────────────────────────────────
 
 const VICTORY_MSGS = {
-  domination: { title: 'DOMINATION VICTORY', sub: 'All enemies destroyed.', color: '#ff4444' },
-  exploration: { title: 'EXPLORATION VICTORY', sub: 'All caches recovered.', color: '#ffcc00' },
-  escape:      { title: 'ESCAPE VICTORY',      sub: 'You escaped the facility.', color: '#00ff88' },
+  domination: { title: 'GLORY TO ROME', sub: 'All minotaurs slain. The labyrinth is yours.', color: '#ff4444' },
+  exploration: { title: 'RELICS RECOVERED', sub: 'All sacred relics claimed from the depths.', color: '#ffcc00' },
+  escape:      { title: 'THESEUS ESCAPES', sub: 'You fled the labyrinth and lived to tell it.', color: '#00ff88' },
 };
+
+// Shared bounds for the "MAIN MENU" button on end screens
+export const MENU_BTN = { x: SCREEN_W / 2 - 100, y: SCREEN_H / 2 + 110, w: 200, h: 40 };
+
+export function hitTestMenuButton(mx, my) {
+  return mx >= MENU_BTN.x && mx <= MENU_BTN.x + MENU_BTN.w &&
+         my >= MENU_BTN.y && my <= MENU_BTN.y + MENU_BTN.h;
+}
+
+function drawMenuButton(ctx) {
+  ctx.fillStyle = 'rgba(0,255,68,0.12)';
+  ctx.strokeStyle = '#00ff44';
+  ctx.lineWidth = 1.5;
+  ctx.fillRect(MENU_BTN.x, MENU_BTN.y, MENU_BTN.w, MENU_BTN.h);
+  ctx.strokeRect(MENU_BTN.x, MENU_BTN.y, MENU_BTN.w, MENU_BTN.h);
+  ctx.fillStyle = '#00ff44';
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('MAIN MENU', SCREEN_W / 2, MENU_BTN.y + 26);
+}
 
 export function renderVictory(ctx, state) {
   const info = VICTORY_MSGS[state.victoryType] || VICTORY_MSGS.escape;
@@ -536,10 +559,11 @@ export function renderVictory(ctx, state) {
 
   ctx.fillStyle = '#888';
   ctx.font = '16px monospace';
-  ctx.fillText(`Enemies: ${state.player.kills}  Caches: ${state.caches.filter(c=>c.found).length}/${state.caches.length}`,
+  ctx.fillText(`Minotaurs slain: ${state.player.kills}  Relics found: ${state.caches.filter(c=>c.found).length}/${state.caches.length}`,
     SCREEN_W / 2, SCREEN_H / 2 + 50);
-  ctx.fillText('Press R to restart', SCREEN_W / 2, SCREEN_H / 2 + 90);
+  ctx.fillText('R — enter the labyrinth again  ·  Enter — main menu', SCREEN_W / 2, SCREEN_H / 2 + 85);
   ctx.textAlign = 'left';
+  drawMenuButton(ctx);
 }
 
 export function renderClickToPlay(ctx) {
@@ -549,7 +573,7 @@ export function renderClickToPlay(ctx) {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#00ff44';
   ctx.font = 'bold 30px monospace';
-  ctx.fillText('CLICK TO PLAY', SCREEN_W / 2, SCREEN_H / 2 - 10);
+  ctx.fillText('CLICK TO ENTER THE LABYRINTH', SCREEN_W / 2, SCREEN_H / 2 - 10);
   ctx.fillStyle = '#557755';
   ctx.font = '14px monospace';
   ctx.fillText('Locks mouse for look controls', SCREEN_W / 2, SCREEN_H / 2 + 22);
@@ -564,11 +588,12 @@ export function renderGameOver(ctx, state) {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#cc0000';
   ctx.font = 'bold 60px monospace';
-  ctx.fillText('YOU DIED', SCREEN_W / 2, SCREEN_H / 2 - 30);
+  ctx.fillText('CONSUMED BY THE LABYRINTH', SCREEN_W / 2, SCREEN_H / 2 - 30);
 
   ctx.fillStyle = '#888';
   ctx.font = '18px monospace';
-  ctx.fillText(`Enemies killed: ${state.player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 20);
-  ctx.fillText('Press R to restart', SCREEN_W / 2, SCREEN_H / 2 + 55);
+  ctx.fillText(`Minotaurs slain: ${state.player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 20);
+  ctx.fillText('Press R to enter the labyrinth again', SCREEN_W / 2, SCREEN_H / 2 + 55);
   ctx.textAlign = 'left';
+  drawMenuButton(ctx);
 }

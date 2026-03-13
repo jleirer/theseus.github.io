@@ -588,6 +588,7 @@ export function checkInteractions(state) {
       c.found = true;
       state.phase = 'cachePrompt';
       state.pendingCacheIdx = i;
+      state.cacheSelection = null;
       return;
     }
   }

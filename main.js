@@ -5,12 +5,13 @@ import { initRenderer, renderScene } from './raycaster.js';
 import { renderHUD, renderCrosshair, renderMinimap,
          renderCachePrompt, hitTestCachePrompt,
          renderVictory, renderGameOver,
-         renderClickToPlay, renderEffects, renderEnemyHealthBars } from './ui.js';
+         renderClickToPlay, renderEffects, renderEnemyHealthBars,
+         hitTestMenuButton } from './ui.js';
 import {
   createPlayer, createEnemy, createMinion, createCache, createExit, createHealthPack,
   updateEntities, updateExploration, checkInteractions, shootPlayer, spawnMinion,
 } from './entities.js';
-import { getUnlockableWeapons } from './weapons.js';
+import { getUnlockableWeapons, weaponNodeState } from './weapons.js';
 
 // ─── Canvas setup ─────────────────────────────────────────────────────────────
 
@@ -40,6 +41,25 @@ document.addEventListener('keydown', (e) => {
   // Restart
   if (e.code === 'KeyR' && (state.phase === 'gameOver' || state.phase === 'victory')) {
     startGame(state.settings);
+  }
+
+  // Return to main menu from end screens
+  if (e.code === 'Enter' && (state.phase === 'gameOver' || state.phase === 'victory')) {
+    returnToMenu();
+  }
+
+  // Cache prompt keyboard navigation
+  if (state.phase === 'cachePrompt') {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) {
+      e.preventDefault();
+      if (!state.cacheSelection) state.cacheSelection = 'pistol';
+      const next = CACHE_NAV[state.cacheSelection]?.[e.code];
+      if (next) state.cacheSelection = next;
+    }
+    if (e.code === 'Enter' || e.code === 'Space') {
+      e.preventDefault();
+      handleCacheKeyboard();
+    }
   }
 });
 
@@ -80,6 +100,12 @@ document.addEventListener('mousedown', (e) => {
   if (e.button === 0 && state.phase === 'cachePrompt') {
     handleCacheClick();
   }
+  if (e.button === 0 && (state.phase === 'victory' || state.phase === 'gameOver')) {
+    const r = canvas.getBoundingClientRect();
+    const cx = (e.clientX - r.left) * (SCREEN_W / r.width);
+    const cy = (e.clientY - r.top)  * (SCREEN_H / r.height);
+    if (hitTestMenuButton(cx, cy)) returnToMenu();
+  }
 });
 
 // Keyboard shoot (Space)
@@ -87,22 +113,60 @@ document.addEventListener('keydown', (e) => {
   if (state?.phase === 'playing' && e.code === 'Space') shootPlayer(state);
 });
 
-function handleCacheClick() {
-  if (!state.mouse) return;
-  const choice = hitTestCachePrompt(state.mouse.x, state.mouse.y, state);
-  if (!choice) return;
+function returnToMenu() {
+  if (document.pointerLockElement === canvas) document.exitPointerLock();
+  state = null;
+  canvas.style.display = 'none';
+  document.getElementById('setup').style.display = 'flex';
+}
 
+// Arrow-key navigation map for the tech tree + minion buttons
+const CACHE_NAV = {
+  pistol:  { ArrowDown: 'shotgun', ArrowRight: 'smg'     },
+  shotgun: { ArrowUp: 'pistol',    ArrowDown: 'rocket',   ArrowRight: 'smg'     },
+  smg:     { ArrowUp: 'pistol',    ArrowDown: 'plasma',   ArrowLeft:  'shotgun' },
+  rocket:  { ArrowUp: 'shotgun',   ArrowDown: 'bfg',      ArrowRight: 'plasma'  },
+  plasma:  { ArrowUp: 'smg',       ArrowDown: 'railgun',  ArrowLeft:  'rocket'  },
+  bfg:     { ArrowUp: 'rocket',    ArrowDown: 'minion0',  ArrowRight: 'railgun' },
+  railgun: { ArrowUp: 'plasma',    ArrowDown: 'minion2',  ArrowLeft:  'bfg'     },
+  minion0: { ArrowUp: 'bfg',       ArrowRight: 'minion1' },
+  minion1: { ArrowUp: 'bfg',       ArrowLeft:  'minion0', ArrowRight: 'minion2' },
+  minion2: { ArrowUp: 'railgun',   ArrowLeft:  'minion1' },
+};
+
+const MINION_IDS = ['scout', 'guard', 'hunter'];
+
+function applyCacheChoice(choice) {
   if (choice.type === 'weapon') {
     state.player.weapons.add(choice.id);
     state.player.activeWeapon = choice.id;
   } else {
     spawnMinion(state, choice.id);
   }
-
   state.phase = 'playing';
   state.pendingCacheIdx = null;
+  state.cacheSelection = null;
   state.mouse = null;
   canvas.requestPointerLock().catch(() => {});
+}
+
+function handleCacheClick() {
+  if (!state.mouse) return;
+  const choice = hitTestCachePrompt(state.mouse.x, state.mouse.y, state);
+  if (!choice) return;
+  applyCacheChoice(choice);
+}
+
+function handleCacheKeyboard() {
+  const sel = state?.cacheSelection;
+  if (!sel) return;
+  if (sel.startsWith('minion')) {
+    const idx = parseInt(sel.replace('minion', ''));
+    applyCacheChoice({ type: 'minion', id: MINION_IDS[idx] });
+  } else {
+    if (weaponNodeState(sel, state.player.weapons) !== 'available') return;
+    applyCacheChoice({ type: 'weapon', id: sel });
+  }
 }
 
 // Player input binding
@@ -155,7 +219,8 @@ function gameLoop(timestamp) {
       renderClickToPlay(ctx);
     }
     if (state.phase === 'cachePrompt') {
-      renderCachePrompt(ctx, state, state.mouse);
+      if (state.cacheSelection == null) state.cacheSelection = 'pistol';
+      renderCachePrompt(ctx, state, state.mouse, state.cacheSelection);
     }
     if (state.phase === 'victory')  renderVictory(ctx, state);
     if (state.phase === 'gameOver') renderGameOver(ctx, state);

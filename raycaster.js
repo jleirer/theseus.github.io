@@ -20,32 +20,32 @@ const TEXTURES = [];  // Uint32Array[TEX*TEX] each
 function pack(r, g, b) { return (0xFF << 24) | (b << 16) | (g << 8) | r; }
 
 function generateTextures() {
-  // Tex 0: brick / stone
+  // Tex 0: limestone blocks (ancient labyrinth)
   const t0 = new Uint32Array(TEX * TEX);
   for (let y = 0; y < TEX; y++) {
     for (let x = 0; x < TEX; x++) {
-      const row  = Math.floor(y / 10);
-      const offX = (row % 2) * 8;
-      const mortV = ((x + offX) % 16) < 2;
-      const mortH = (y % 10) < 2;
-      const n = (x * 13 + y * 7 + row * 31) % 25 - 12;
+      const row  = Math.floor(y / 12);
+      const offX = (row % 2) * 10;
+      const mortV = ((x + offX) % 20) < 2;
+      const mortH = (y % 12) < 2;
+      const n = (x * 11 + y * 7 + row * 29) % 28 - 14;
       t0[y * TEX + x] = (mortV || mortH)
-        ? pack(60, 55, 50)
-        : pack(128 + n, 105 + n, 82 + n);
+        ? pack(75, 65, 50)
+        : pack(185 + n, 165 + n, 120 + n);
     }
   }
   TEXTURES.push(t0);
 
-  // Tex 1: metal panels
+  // Tex 1: rougher stone (darker passages)
   const t1 = new Uint32Array(TEX * TEX);
   for (let y = 0; y < TEX; y++) {
     for (let x = 0; x < TEX; x++) {
-      const panel = Math.floor(y / 8) % 2;
-      const seam  = (y % 8) < 1 || (x % 16) < 1;
-      const n = (x * 7 + y * 3) % 15 - 7;
+      const block = Math.floor(y / 10);
+      const seam  = (y % 10) < 2 || (x % 12) < 2;
+      const n = (x * 9 + y * 5 + block * 17) % 22 - 11;
       t1[y * TEX + x] = seam
-        ? pack(35, 35, 40)
-        : (panel ? pack(68 + n, 68 + n, 82 + n) : pack(52 + n, 52 + n, 65 + n));
+        ? pack(55, 45, 32)
+        : pack(140 + n, 118 + n, 85 + n);
     }
   }
   TEXTURES.push(t1);
@@ -72,13 +72,33 @@ function makeTex(fn) {
 }
 
 function generateSprites() {
-  // 0: Enemy (red humanoid)
-  SPRITES.push(makeTex(({ rect, circ }) => {
-    circ(32, 13, 9, 195, 45, 45);
-    rect(27, 10, 4, 4, 15, 15, 15); rect(33, 10, 4, 4, 15, 15, 15); // eyes
-    rect(23, 23, 18, 22, 165, 28, 28); // torso
-    rect(13, 24, 10, 14, 140, 20, 20); rect(41, 24, 10, 14, 140, 20, 20); // arms
-    rect(23, 45, 7, 15, 125, 15, 15); rect(34, 45, 7, 15, 125, 15, 15); // legs
+  // 0: Minotaur (bull-headed humanoid)
+  SPRITES.push(makeTex(({ rect, circ, s }) => {
+    // Horns (sweeping upward)
+    rect(16, 1, 6, 16, 195, 155, 80);  rect(42, 1, 6, 16, 195, 155, 80);
+    rect(14, 5, 4, 10, 215, 175, 95);  rect(46, 5, 4, 10, 215, 175, 95);
+    // Head (large, bull-like)
+    circ(32, 16, 13, 145, 102, 58);
+    // Ears
+    circ(18, 12, 5, 160, 115, 65);  circ(46, 12, 5, 160, 115, 65);
+    circ(18, 12, 3, 185, 130, 95);  circ(46, 12, 3, 185, 130, 95);
+    // Eyes (dark, angry red glint)
+    rect(24, 10, 6, 5, 12, 4, 0);  rect(34, 10, 6, 5, 12, 4, 0);
+    s(26, 12, 140, 15, 15);  s(36, 12, 140, 15, 15);
+    // Snout / muzzle
+    circ(32, 21, 7, 162, 115, 70);
+    rect(28, 17, 4, 5, 22, 8, 2);  rect(36, 17, 4, 5, 22, 8, 2);  // nostrils
+    // Neck
+    rect(25, 28, 14, 8, 125, 85, 45);
+    // Torso (wide, muscular)
+    rect(14, 36, 36, 20, 118, 78, 40);
+    // Arms (thick, powerful)
+    rect(2, 36, 12, 20, 105, 68, 34);  rect(50, 36, 12, 20, 105, 68, 34);
+    circ(7, 56, 6, 88, 55, 28);  circ(57, 56, 6, 88, 55, 28);  // fists
+    // Legs
+    rect(16, 56, 13, 7, 105, 68, 34);  rect(35, 56, 13, 7, 105, 68, 34);
+    // Hooves
+    rect(15, 61, 14, 3, 38, 24, 8);  rect(35, 61, 14, 3, 38, 24, 8);
   }));
 
   // 1: Cache (gold chest)
@@ -170,9 +190,9 @@ export function renderScene(ctx, state) {
   const { cells, map, player } = state;
   const { w: mapW, h: mapH } = map;
 
-  // Pre-fill ceiling and floor
-  const CEIL  = pack(22, 24, 38);
-  const FLOOR = pack(32, 22, 14);
+  // Pre-fill ceiling and floor (ancient stone labyrinth)
+  const CEIL  = pack(14, 11, 7);
+  const FLOOR = pack(58, 47, 28);
   buf32.fill(CEIL,  0,                SCREEN_W * HALF_H);
   buf32.fill(FLOOR, SCREEN_W * HALF_H, SCREEN_W * SCREEN_H);
 
@@ -262,6 +282,7 @@ export function renderScene(ctx, state) {
       if (zBuf[sx2] < tY) continue;  // behind wall
       const texX2 = Math.floor((sx2 - (screenX - sprW / 2)) * TEX / sprW);
       const flash = spr.hitTimer > 0 ? Math.min(1, spr.hitTimer * 8) : 0;
+      const bloodFrac = (spr.health != null) ? Math.max(0, 1 - spr.health / spr.maxHealth) : 0;
       for (let sy2 = drawY0; sy2 <= drawY1; sy2++) {
         const texY = Math.floor((sy2 - (HALF_H - sprH / 2)) * TEX / sprH);
         const raw  = tex[texY * TEX + texX2];
@@ -269,6 +290,12 @@ export function renderScene(ctx, state) {
         let r = ((raw & 0xFF) * shade) | 0;
         let g = (((raw >> 8) & 0xFF) * shade) | 0;
         let b = (((raw >> 16) & 0xFF) * shade) | 0;
+        if (bloodFrac > 0) {
+          const bf2 = bloodFrac * bloodFrac;
+          r = Math.min(255, r + ((190 * bf2) | 0));
+          g = Math.max(0, (g * (1 - bloodFrac * 0.65)) | 0);
+          b = Math.max(0, (b * (1 - bloodFrac * 0.75)) | 0);
+        }
         if (flash > 0) {
           r = Math.min(255, r + (((255 - r) * flash) | 0));
           g = Math.min(255, g + (((255 - g) * flash) | 0));
