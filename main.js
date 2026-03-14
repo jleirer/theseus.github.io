@@ -65,9 +65,10 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('keyup',  (e) => { if (state) state.keys[e.code] = false; });
 
-// Mouse look (pointer lock)
+// Mouse look (pointer lock) — desktop only
+const isTouchDevice = navigator.maxTouchPoints > 0;
 canvas.addEventListener('click', () => {
-  if (state?.phase === 'playing') canvas.requestPointerLock();
+  if (!isTouchDevice && state?.phase === 'playing') canvas.requestPointerLock();
 });
 
 document.addEventListener('pointerlockchange', () => {
@@ -117,7 +118,132 @@ function returnToMenu() {
   if (document.pointerLockElement === canvas) document.exitPointerLock();
   state = null;
   canvas.style.display = 'none';
+  showTouchUI(false);
   document.getElementById('setup').style.display = 'flex';
+}
+
+// ─── Touch controls ───────────────────────────────────────────────────────────
+
+const touchFireBtn  = document.getElementById('touch-fire');
+const touchUseBtn   = document.getElementById('touch-use');
+const touchStickEl  = document.getElementById('touch-stick');
+
+let joystickTouch = null; // { id, startX, startY, curX, curY }
+let lookTouch     = null; // { id, lastX }
+let fireInterval  = null;
+
+function showTouchUI(on) {
+  if (!isTouchDevice) return;
+  const d = on ? 'flex' : 'none';
+  touchFireBtn.style.display = d;
+  touchUseBtn.style.display  = d;
+}
+
+// Fire button — hold for continuous fire
+touchFireBtn.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (state?.phase === 'playing') {
+    shootPlayer(state);
+    fireInterval = setInterval(() => { if (state?.phase === 'playing') shootPlayer(state); }, 80);
+  }
+}, { passive: false });
+touchFireBtn.addEventListener('touchend',    () => clearInterval(fireInterval), { passive: false });
+touchFireBtn.addEventListener('touchcancel', () => clearInterval(fireInterval), { passive: false });
+
+// Use button — simulates E key press
+touchUseBtn.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (state) { state.keys['KeyE'] = true; setTimeout(() => { if (state) state.keys['KeyE'] = false; }, 120); }
+}, { passive: false });
+
+// Canvas touch — left half: joystick, right half: look; tap end screens for menu button
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (!state) return;
+
+  if (state.phase === 'victory' || state.phase === 'gameOver') {
+    const t = e.changedTouches[0];
+    const r = canvas.getBoundingClientRect();
+    const cx = (t.clientX - r.left) * (SCREEN_W / r.width);
+    const cy = (t.clientY - r.top)  * (SCREEN_H / r.height);
+    if (hitTestMenuButton(cx, cy)) returnToMenu();
+    return;
+  }
+
+  if (state.phase === 'cachePrompt') {
+    const t = e.changedTouches[0];
+    const r = canvas.getBoundingClientRect();
+    state.mouse = {
+      x: (t.clientX - r.left) * (SCREEN_W / r.width),
+      y: (t.clientY - r.top)  * (SCREEN_H / r.height),
+    };
+    handleCacheClick();
+    return;
+  }
+
+  if (state.phase !== 'playing') return;
+  const r = canvas.getBoundingClientRect();
+  for (const t of e.changedTouches) {
+    const cx = (t.clientX - r.left) * (SCREEN_W / r.width);
+    if (cx < SCREEN_W / 2) {
+      if (!joystickTouch) {
+        joystickTouch = { id: t.identifier, startX: t.clientX, startY: t.clientY, curX: t.clientX, curY: t.clientY };
+        touchStickEl.style.left    = t.clientX + 'px';
+        touchStickEl.style.top     = t.clientY + 'px';
+        touchStickEl.style.display = 'block';
+      }
+    } else {
+      if (!lookTouch) lookTouch = { id: t.identifier, lastX: t.clientX };
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (!state || state.phase !== 'playing') return;
+  for (const t of e.changedTouches) {
+    if (joystickTouch && t.identifier === joystickTouch.id) {
+      joystickTouch.curX = t.clientX;
+      joystickTouch.curY = t.clientY;
+    }
+    if (lookTouch && t.identifier === lookTouch.id) {
+      const rect = canvas.getBoundingClientRect();
+      state.player.input.mouseDX += (t.clientX - lookTouch.lastX) * (SCREEN_W / rect.width);
+      lookTouch.lastX = t.clientX;
+    }
+  }
+}, { passive: false });
+
+function clearJoystick() {
+  joystickTouch = null;
+  touchStickEl.style.display = 'none';
+  if (state?.player) {
+    const i = state.player.input;
+    i.forward = i.back = i.strafeL = i.strafeR = false;
+  }
+}
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (joystickTouch && t.identifier === joystickTouch.id) clearJoystick();
+    if (lookTouch     && t.identifier === lookTouch.id)     lookTouch = null;
+  }
+}, { passive: false });
+canvas.addEventListener('touchcancel', (e) => {
+  clearJoystick(); lookTouch = null;
+}, { passive: false });
+
+function updateJoystickInput() {
+  if (!joystickTouch || !state?.player) return;
+  const dx   = joystickTouch.curX - joystickTouch.startX;
+  const dy   = joystickTouch.curY - joystickTouch.startY;
+  const dead = 14; // CSS px deadzone
+  const i    = state.player.input;
+  i.forward = dy < -dead;
+  i.back    = dy >  dead;
+  i.strafeL = dx < -dead;
+  i.strafeR = dx >  dead;
 }
 
 // Arrow-key navigation map for the tech tree + minion buttons
@@ -147,7 +273,7 @@ function applyCacheChoice(choice) {
   state.pendingCacheIdx = null;
   state.cacheSelection = null;
   state.mouse = null;
-  canvas.requestPointerLock().catch(() => {});
+  if (!isTouchDevice) canvas.requestPointerLock().catch(() => {});
 }
 
 function handleCacheClick() {
@@ -197,6 +323,7 @@ function gameLoop(timestamp) {
 
   if (state) {
     if (state.phase === 'playing') {
+      updateJoystickInput();
       updateEntities(state, dt);
       updateExploration(state);
       checkInteractions(state);
@@ -222,7 +349,7 @@ function gameLoop(timestamp) {
       const boss = state.enemies?.find(e => e.isBoss && !e.dead);
       if (boss) renderBossHealthBar(ctx, boss);
     }
-    if (state.phase === 'playing' && document.pointerLockElement !== canvas) {
+    if (state.phase === 'playing' && !isTouchDevice && document.pointerLockElement !== canvas) {
       renderClickToPlay(ctx);
     }
     if (state.phase === 'cachePrompt') {
@@ -283,6 +410,7 @@ function startGame(settings) {
             loading.style.display = 'none';
             canvas.style.display  = 'block';
             canvas.focus();
+            showTouchUI(true);
           }, 200);
         } catch (err) {
           msg.textContent = 'ERROR: ' + err.message;

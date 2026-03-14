@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
   <title>THESEUS</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23000'/><text x='2' y='13' font-size='12' fill='%2300ff44'>T</text></svg>">
   <style>
@@ -17,8 +17,8 @@
       box-shadow: 0 0 40px #0f04, inset 0 0 60px #0001;
     }
 
-    h1 { font-size: 52px; letter-spacing: 10px; color: #0f0; text-shadow: 0 0 18px #0f0; }
-    .subtitle { color: #0a0; font-size: 13px; letter-spacing: 3px; }
+    h1 { font-size: clamp(28px, 10vw, 52px); letter-spacing: clamp(4px, 2vw, 10px); color: #0f0; text-shadow: 0 0 18px #0f0; }
+    .subtitle { color: #0a0; font-size: clamp(10px, 2.5vw, 13px); letter-spacing: 3px; }
 
     .setting { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
     .setting label { color: #0a0; font-size: 13px; letter-spacing: 2px; }
@@ -53,9 +53,35 @@
 
     .note { font-size: 10px; color: #040; text-align: center; }
 
-    canvas { display: none; cursor: crosshair; outline: none; }
+    canvas {
+      display: none; cursor: crosshair; outline: none; touch-action: none;
+      /* scale to fill screen while maintaining 16:9 */
+      width: min(100vw, calc(100vh * 960 / 540));
+      height: auto;
+    }
     canvas.locked { cursor: none; }
     canvas:focus { outline: none; }
+
+    /* Touch controls */
+    .touch-btn {
+      display: none; position: fixed;
+      width: 72px; height: 72px; border-radius: 50%;
+      background: rgba(0,255,68,0.12); border: 2px solid rgba(0,200,50,0.6);
+      color: #0f0; font-family: 'Courier New', monospace; font-size: 11px;
+      letter-spacing: 1px; cursor: pointer; touch-action: none;
+      align-items: center; justify-content: center;
+      -webkit-tap-highlight-color: transparent; user-select: none;
+      z-index: 20; text-align: center; line-height: 1.3;
+    }
+    #touch-fire { bottom: 28px; right: 28px; }
+    #touch-use  { bottom: 28px; right: 112px; }
+    #touch-stick {
+      display: none; position: fixed;
+      width: 76px; height: 76px; border-radius: 50%;
+      border: 2px solid rgba(0,255,68,0.35);
+      background: rgba(0,255,68,0.06);
+      pointer-events: none; transform: translate(-50%,-50%); z-index: 20;
+    }
 
     #loading {
       display: none; position: fixed; inset: 0;
@@ -112,6 +138,9 @@
 </div>
 
 <canvas id="game" tabindex="0"></canvas>
+<button id="touch-fire" class="touch-btn">FIRE</button>
+<button id="touch-use"  class="touch-btn">USE<br><small>exit/cache</small></button>
+<div    id="touch-stick"></div>
 
 <script>
   // Setup UI logic (runs before ES module)
