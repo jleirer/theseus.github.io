@@ -44,6 +44,7 @@ export function createEnemy(x, y, index) {
     hitTimer: 0,
     weaponTier: 0,
     damageMult: 1.0,
+    speedMult: 1.0,
     isReinforcement: false,
   };
 }
@@ -234,7 +235,93 @@ function damageEnemy(enemy, dmg, state) {
 }
 
 function checkDomination(state) {
-  if (state.enemies.every(e => e.dead)) triggerVictory(state, 'domination');
+  if (!state.enemies.every(e => e.dead)) return;
+  if (state.wave >= 3) {
+    triggerVictory(state, 'domination');
+  } else if (state.wave === 2) {
+    spawnBoss(state);
+  } else {
+    spawnNextWave(state);
+  }
+}
+
+function spawnBoss(state) {
+  state.wave = 3;
+  state.waveMessage = { text: 'NERO DESCENDS UPON YOU', timer: 4.0, isBoss: true };
+
+  const rooms = state.map.rooms;
+  if (!rooms || rooms.length === 0) { triggerVictory(state, 'domination'); return; }
+  const px = state.player.x, py = state.player.y;
+  let farthest = rooms[0], maxDist = 0;
+  for (const r of rooms) {
+    const d = Math.hypot(r.x + r.w / 2 - px, r.y + r.h / 2 - py);
+    if (d > maxDist) { maxDist = d; farthest = r; }
+  }
+
+  const boss = createEnemy(farthest.x + farthest.w / 2 + 0.5, farthest.y + farthest.h / 2 + 0.5, 0);
+  boss.health    = 600;
+  boss.maxHealth = 600;
+  boss.speedMult = 1.2;
+  boss.damageMult = 3.0;
+  boss.spriteId  = 8;
+  boss.isBoss    = true;
+  boss.aiState   = 'chase';
+  boss.lastKnownPX = px;
+  boss.lastKnownPY = py;
+  state.enemies.push(boss);
+}
+
+function spawnNextWave(state) {
+  state.wave = 2;
+  state.waveMessage = { text: 'WAVE 2 — THE HORDE AWAKENS', timer: 3.5 };
+
+  const { map } = state;
+  const rooms = map.rooms;
+  if (!rooms || rooms.length === 0) { triggerVictory(state, 'domination'); return; }
+  const numNew = state.settings.numEnemies + 2;
+
+  for (let i = 0; i < numNew; i++) {
+    const room = rooms[i % rooms.length];
+    const x = room.x + 1 + Math.random() * Math.max(0, room.w - 2) + 0.5;
+    const y = room.y + 1 + Math.random() * Math.max(0, room.h - 2) + 0.5;
+    const e = createEnemy(x, y, i);
+    e.health = Math.round(ENEMY_HEALTH * 1.5);
+    e.maxHealth = e.health;
+    e.speedMult = 1.35;
+    e.damageMult = 1.5;
+    e.aiState = 'chase';
+    e.lastKnownPX = state.player.x;
+    e.lastKnownPY = state.player.y;
+    state.enemies.push(e);
+  }
+
+  // If every cache has already been found, spawn a fresh wave of caches too
+  if (state.caches.length > 0 && state.caches.every(c => c.found)) {
+    spawnCacheWave(state);
+  }
+}
+
+function spawnCacheWave(state) {
+  const rooms = state.map.rooms;
+  const numNew = Math.max(2, Math.floor(rooms.length / 4));
+  const used = new Set([0]); // keep start room clear
+
+  for (const c of state.caches) {
+    const ri = rooms.findIndex(r =>
+      Math.abs(c.x - (r.x + r.w / 2 + 0.5)) < 1.5 &&
+      Math.abs(c.y - (r.y + r.h / 2 + 0.5)) < 1.5
+    );
+    if (ri >= 0) used.add(ri);
+  }
+
+  let nextId = state.caches.reduce((m, c) => Math.max(m, c.id), -1) + 1;
+  for (let i = 0; i < numNew; i++) {
+    let ri = 0, att = 0;
+    while (used.has(ri) && att++ < 30) ri = Math.floor(Math.random() * rooms.length);
+    used.add(ri);
+    const r = rooms[ri];
+    state.caches.push(createCache(r.x + r.w / 2 + 0.5, r.y + r.h / 2 + 0.5, nextId++));
+  }
 }
 
 function triggerVictory(state, type) {
@@ -357,7 +444,7 @@ function doEnemyPatrol(enemy, dt, state) {
       enemy.pathCooldown = 1.5;
     }
   }
-  walkPath(enemy, dt, ENEMY_SPEED * 0.45, state);
+  walkPath(enemy, dt, ENEMY_SPEED * 0.45 * enemy.speedMult, state);
 }
 
 function doEnemyChase(enemy, dt, state) {
@@ -366,7 +453,7 @@ function doEnemyChase(enemy, dt, state) {
     enemy.path = findPath(cells, map.w, map.h, enemy.x, enemy.y, enemy.lastKnownPX, enemy.lastKnownPY);
     enemy.pathCooldown = 0.5;
   }
-  walkPath(enemy, dt, ENEMY_SPEED, state);
+  walkPath(enemy, dt, ENEMY_SPEED * enemy.speedMult, state);
 }
 
 function doEnemyAttack(enemy, dt, dist, state) {
@@ -575,7 +662,7 @@ export function checkInteractions(state) {
 
   // Health pack pickup
   for (const hp of (state.healthPacks || [])) {
-    if (!hp.collected && Math.hypot(p.x - hp.x, p.y - hp.y) < 0.8) {
+    if (!hp.collected && p.health < p.maxHealth && Math.hypot(p.x - hp.x, p.y - hp.y) < 0.8) {
       hp.collected = true;
       p.health = hp.size === 'large' ? p.maxHealth : Math.min(p.maxHealth, p.health + hp.hp);
     }
@@ -599,11 +686,6 @@ export function checkInteractions(state) {
     triggerVictory(state, 'escape');
   }
 
-  // Exploration victory: player found all caches enemies haven't looted
-  const playerCaches = state.caches.filter(c => !c.enemyLooted);
-  if (playerCaches.length > 0 && playerCaches.every(c => c.found) && state.phase === 'playing') {
-    triggerVictory(state, 'exploration');
-  }
 }
 
 // ─── Main update dispatcher ───────────────────────────────────────────────────

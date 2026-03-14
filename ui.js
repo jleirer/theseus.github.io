@@ -61,36 +61,31 @@ export function renderHUD(ctx, state) {
   // --- Top bar: win conditions ---
   const totalEnemies = enemies.length;
   const deadEnemies  = enemies.filter(e => e.dead).length;
-  const lootedCaches = caches.filter(c => c.enemyLooted).length;
-  const foundCaches  = caches.filter(c => c.found && !c.enemyLooted).length;
-  const totalCaches  = caches.length - lootedCaches;
 
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fillRect(0, 0, SCREEN_W, 28);
 
   ctx.font = '12px monospace';
 
+  // Wave
+  ctx.fillStyle = state.wave >= 2 ? '#ff8844' : '#666';
+  ctx.fillText(`WAVE ${state.wave}`, SCREEN_W - 70, 18);
+
   // Domination
-  const livingEnemies = totalEnemies - deadEnemies;
   const domDone = deadEnemies === totalEnemies && totalEnemies > 0;
   ctx.fillStyle = domDone ? '#00ff44' : '#ff4444';
   ctx.fillText(`⚔ ${deadEnemies}/${totalEnemies} SLAIN`, 12, 18);
-
-  // Exploration
-  const expDone = totalCaches > 0 && foundCaches === totalCaches;
-  ctx.fillStyle = expDone ? '#00ff44' : lootedCaches > 0 ? '#ff8844' : '#ffcc00';
-  ctx.fillText(`◆ ${foundCaches}/${totalCaches} RELICS${lootedCaches > 0 ? ` [${lootedCaches} taken]` : ''}`, 180, 18);
 
   // Escape
   const nearExit = state.exit &&
     Math.hypot(state.player.x - state.exit.x, state.player.y - state.exit.y) < 1.5;
   ctx.fillStyle = nearExit ? '#00ff44' : '#88aaff';
-  ctx.fillText(`⬡ EXIT:${nearExit ? ' [E] FLEE' : ' NOT REACHED'}`, 340, 18);
+  ctx.fillText(`⬡ EXIT:${nearExit ? ' [E] FLEE' : ' NOT REACHED'}`, 200, 18);
 
   // Minion count
   const aliveMins = state.minions.filter(m => !m.dead).length;
   ctx.fillStyle = '#aaddff';
-  ctx.fillText(`◉ ALLIES: ${aliveMins}`, 570, 18);
+  ctx.fillText(`◉ ALLIES: ${aliveMins}`, 420, 18);
 }
 
 // Simple weapon sprite at bottom-center
@@ -515,11 +510,67 @@ export function renderEnemyHealthBars(ctx, state) {
   ctx.restore();
 }
 
+// ─── Wave announcement ────────────────────────────────────────────────────────
+
+export function renderWaveMessage(ctx, waveMessage) {
+  const maxTimer = waveMessage.isBoss ? 4.0 : 3.5;
+  const frac  = Math.min(1, waveMessage.timer / maxTimer);
+  const alpha = frac < 0.25 ? frac / 0.25 : frac > 0.75 ? (frac - 0.75) / 0.25 : 1;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillRect(0, SCREEN_H / 2 - 50, SCREEN_W, 80);
+  ctx.textAlign = 'center';
+  if (waveMessage.isBoss) {
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 40px monospace';
+    ctx.fillText(waveMessage.text, SCREEN_W / 2, SCREEN_H / 2 + 3);
+    ctx.fillStyle = '#aa6600';
+    ctx.font = '15px monospace';
+    ctx.fillText('THE EMPEROR OF ROME HAS COME TO FINISH YOU', SCREEN_W / 2, SCREEN_H / 2 + 24);
+  } else {
+    ctx.fillStyle = '#ff6622';
+    ctx.font = 'bold 36px monospace';
+    ctx.fillText(waveMessage.text, SCREEN_W / 2, SCREEN_H / 2 + 3);
+    ctx.fillStyle = '#cc4400';
+    ctx.font = '14px monospace';
+    ctx.fillText('FASTER · STRONGER · ANGRIER', SCREEN_W / 2, SCREEN_H / 2 + 22);
+  }
+  ctx.textAlign = 'left';
+  ctx.restore();
+}
+
+export function renderBossHealthBar(ctx, boss) {
+  const frac = Math.max(0, boss.health / boss.maxHealth);
+  const barW = 420, barH = 18;
+  const bx = SCREEN_W / 2 - barW / 2;
+  const by = 36;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(bx - 10, by - 18, barW + 20, barH + 26);
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('⚡ NERO — EMPEROR OF ROME ⚡', SCREEN_W / 2, by - 4);
+  ctx.fillStyle = '#1a0000';
+  ctx.fillRect(bx, by, barW, barH);
+  const barCol = frac > 0.6 ? '#cc9900' : frac > 0.3 ? '#dd4400' : '#cc0000';
+  ctx.fillStyle = barCol;
+  ctx.fillRect(bx, by, barW * frac, barH);
+  ctx.strokeStyle = '#ffcc00';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(bx, by, barW, barH);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 11px monospace';
+  ctx.fillText(`${boss.health} / ${boss.maxHealth}`, SCREEN_W / 2, by + 13);
+  ctx.textAlign = 'left';
+  ctx.restore();
+}
+
 // ─── Victory / Game Over ──────────────────────────────────────────────────────
 
 const VICTORY_MSGS = {
-  domination: { title: 'GLORY TO ROME', sub: 'All minotaurs slain. The labyrinth is yours.', color: '#ff4444' },
-  exploration: { title: 'RELICS RECOVERED', sub: 'All sacred relics claimed from the depths.', color: '#ffcc00' },
+  domination: { title: 'NERO IS DEAD', sub: 'The Emperor has fallen. Rome will never forget.', color: '#ffcc00' },
   escape:      { title: 'THESEUS ESCAPES', sub: 'You fled the labyrinth and lived to tell it.', color: '#00ff88' },
 };
 
@@ -559,7 +610,7 @@ export function renderVictory(ctx, state) {
 
   ctx.fillStyle = '#888';
   ctx.font = '16px monospace';
-  ctx.fillText(`Minotaurs slain: ${state.player.kills}  Relics found: ${state.caches.filter(c=>c.found).length}/${state.caches.length}`,
+  ctx.fillText(`Minotaurs slain: ${state.player.kills}`,
     SCREEN_W / 2, SCREEN_H / 2 + 50);
   ctx.fillText('R — enter the labyrinth again  ·  Enter — main menu', SCREEN_W / 2, SCREEN_H / 2 + 85);
   ctx.textAlign = 'left';

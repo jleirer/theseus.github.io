@@ -6,7 +6,7 @@ import { renderHUD, renderCrosshair, renderMinimap,
          renderCachePrompt, hitTestCachePrompt,
          renderVictory, renderGameOver,
          renderClickToPlay, renderEffects, renderEnemyHealthBars,
-         hitTestMenuButton } from './ui.js';
+         renderWaveMessage, renderBossHealthBar, hitTestMenuButton } from './ui.js';
 import {
   createPlayer, createEnemy, createMinion, createCache, createExit, createHealthPack,
   updateEntities, updateExploration, checkInteractions, shootPlayer, spawnMinion,
@@ -203,6 +203,10 @@ function gameLoop(timestamp) {
       // Tick and expire effects
       for (const eff of state.effects) eff.timer -= dt;
       state.effects = state.effects.filter(e => e.timer > 0);
+      if (state.waveMessage) {
+        state.waveMessage.timer -= dt;
+        if (state.waveMessage.timer <= 0) state.waveMessage = null;
+      }
     }
 
     // Render
@@ -214,6 +218,9 @@ function gameLoop(timestamp) {
       renderHUD(ctx, state);
       renderEffects(ctx, state);
       renderEnemyHealthBars(ctx, state);
+      if (state.waveMessage) renderWaveMessage(ctx, state.waveMessage);
+      const boss = state.enemies?.find(e => e.isBoss && !e.dead);
+      if (boss) renderBossHealthBar(ctx, boss);
     }
     if (state.phase === 'playing' && document.pointerLockElement !== canvas) {
       renderClickToPlay(ctx);
@@ -263,10 +270,10 @@ function startGame(settings) {
           state = {
             phase: 'playing', victoryType: null,
             cells: mapData.cells,           // shortcut used by raycaster/entities
-            map: { cells: mapData.cells, w: mapData.w, h: mapData.h },
+            map: { cells: mapData.cells, w: mapData.w, h: mapData.h, rooms: mapData.rooms },
             player, enemies, minions: [], caches, exit, healthPacks, explored,
             settings, pendingCacheIdx: null, keys: {}, mouse: null,
-            effects: [],
+            effects: [], wave: 1, waveMessage: null,
           };
 
           fill.style.width = '100%';

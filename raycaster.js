@@ -169,6 +169,43 @@ function generateSprites() {
     rect(30, 24, 4, 13, 255, 255, 255);  // white cross vertical
     rect(24, 29, 16, 4, 255, 255, 255);  // white cross horizontal
   }));
+
+  // 8: Nero (Roman Emperor boss — laurel crown, purple toga, torch)
+  SPRITES.push(makeTex(({ rect, circ, s }) => {
+    // Laurel crown (gold band + leaf clusters)
+    rect(14, 4, 36, 4, 200, 165, 0);
+    rect(10, 1, 7, 7, 185, 150, 0);   rect(22, 0, 6, 5, 195, 160, 0);
+    rect(36, 0, 6, 5, 195, 160, 0);   rect(47, 1, 7, 7, 185, 150, 0);
+    // Head (pale Roman skin)
+    circ(32, 16, 11, 218, 182, 140);
+    // Dark beard
+    rect(22, 19, 20, 7, 55, 38, 22);  rect(24, 25, 16, 4, 40, 28, 15);
+    // Eyes (dark, intense)
+    rect(26, 13, 4, 3, 18, 12, 6);    rect(34, 13, 4, 3, 18, 12, 6);
+    s(27, 14, 210, 160, 80);          s(35, 14, 210, 160, 80);
+    // Neck
+    rect(28, 27, 8, 5, 205, 168, 128);
+    // Purple toga body (wide, imperial)
+    rect(8, 32, 48, 24, 105, 12, 155);
+    rect(8, 32, 48, 2, 200, 162, 0);   // gold top trim
+    rect(8, 54, 48, 2, 200, 162, 0);   // gold bottom trim
+    // Left arm + fist
+    rect(4, 34, 8, 20, 92, 10, 138);
+    circ(8, 56, 5, 195, 160, 125);
+    // Right arm (raised — holding torch)
+    rect(52, 28, 8, 16, 92, 10, 138);
+    circ(56, 27, 5, 195, 160, 125);
+    // Torch handle
+    rect(54, 10, 4, 20, 115, 75, 35);
+    // Torch flame (orange + yellow core)
+    rect(51, 2, 10, 9, 240, 110, 10);
+    rect(53, 0, 6, 6, 255, 210, 20);
+    s(56, 0, 255, 255, 120);
+    // Legs (toga)
+    rect(14, 56, 12, 8, 88, 8, 128);   rect(38, 56, 12, 8, 88, 8, 128);
+    // Sandals (gold straps)
+    rect(12, 62, 16, 2, 160, 120, 55); rect(36, 62, 16, 2, 160, 120, 55);
+  }));
 }
 
 // ─── Shade / distance fog ─────────────────────────────────────────────────────
