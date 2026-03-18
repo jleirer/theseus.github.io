@@ -53,13 +53,13 @@ export const MINION_STATS = {
 
 // Weapons (unlimited ammo)
 export const WEAPONS = {
-  pistol:  { name: 'Pistol',          damage: 22,  fireRate: 1.5, spread: 0.02,  pellets: 1, splash: 0,   penetrating: false, color: '#aaa',    tier: 0 },
-  shotgun: { name: 'Shotgun',         damage: 16,  fireRate: 0.9, spread: 0.18,  pellets: 6, splash: 0,   penetrating: false, color: '#884400', tier: 1 },
-  smg:     { name: 'SMG',             damage: 11,  fireRate: 7.5, spread: 0.09,  pellets: 1, splash: 0,   penetrating: false, color: '#446688', tier: 1 },
-  rocket:  { name: 'Rocket Launcher', damage: 90,  fireRate: 0.5, spread: 0.005, pellets: 1, splash: 2.2, penetrating: false, color: '#ff4400', tier: 2 },
-  plasma:  { name: 'Plasma Rifle',    damage: 38,  fireRate: 4.0, spread: 0.01,  pellets: 1, splash: 0,   penetrating: false, color: '#00aaff', tier: 2 },
-  bfg:     { name: 'BFG 9000',        damage: 320, fireRate: 0.3, spread: 0,     pellets: 1, splash: 4.5, penetrating: false, color: '#00ff44', tier: 3 },
-  railgun: { name: 'Rail Gun',        damage: 190, fireRate: 0.6, spread: 0,     pellets: 1, splash: 0,   penetrating: true,  color: '#00ffcc', tier: 3 },
+  pistol:  { name: 'Pilum',    damage: 22,  fireRate: 1.5, spread: 0.02,  pellets: 1, splash: 0,   penetrating: false, color: '#909090', tier: 0 },
+  shotgun: { name: 'Funda',    damage: 16,  fireRate: 0.9, spread: 0.18,  pellets: 6, splash: 0,   penetrating: false, color: '#8b6914', tier: 1 },
+  smg:     { name: 'Arcus',    damage: 11,  fireRate: 7.5, spread: 0.09,  pellets: 1, splash: 0,   penetrating: false, color: '#6b3a1f', tier: 1 },
+  rocket:  { name: 'Onager',   damage: 90,  fireRate: 0.5, spread: 0.005, pellets: 1, splash: 2.2, penetrating: false, color: '#8b4513', tier: 2 },
+  plasma:  { name: 'Scorpio',  damage: 38,  fireRate: 4.0, spread: 0.01,  pellets: 1, splash: 0,   penetrating: false, color: '#b87333', tier: 2 },
+  bfg:     { name: 'Falarica', damage: 320, fireRate: 0.3, spread: 0,     pellets: 1, splash: 4.5, penetrating: false, color: '#cc4400', tier: 3 },
+  railgun: { name: 'Hasta',    damage: 190, fireRate: 0.6, spread: 0,     pellets: 1, splash: 0,   penetrating: true,  color: '#909090', tier: 3 },
 };
 
 // Tech tree prerequisites

@@ -147,8 +147,8 @@ function rayCircleT(rx, ry, rdx, rdy, cx, cy, radius) {
 }
 
 const MUZZLE_COLORS = {
-  pistol: '#ffff88', shotgun: '#ff8833', smg: '#ffff88',
-  rocket: '#ff6600', plasma: '#00bbff', bfg: '#00ff44',
+  pistol: '#ffeeaa', shotgun: '#ddaa55', smg: '#ffcc88',
+  rocket: '#ff5500', plasma: '#ffaa33', bfg: '#ff4400',
 };
 
 export function shootPlayer(state) {

@@ -95,47 +95,183 @@ function drawWeaponSprite(ctx, weaponId, state) {
   const wy  = SCREEN_H - 100 + Math.abs(bob);
 
   ctx.save();
-  ctx.fillStyle = WEAPONS[weaponId]?.color || '#aaa';
-  ctx.strokeStyle = '#222';
   ctx.lineWidth = 2;
 
   switch (weaponId) {
-    case 'pistol':
-      ctx.fillRect(wx - 10, wy, 28, 18); // grip
-      ctx.fillRect(wx + 8,  wy - 8, 36, 10); // barrel
+    case 'pistol': { // Pilum — Roman javelin
+      // Wooden shaft
+      ctx.fillStyle = '#7b4a1e';
+      ctx.fillRect(wx - 22, wy + 5, 52, 7);
+      // Iron shank (soft iron section that bends on impact)
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(wx + 28, wy + 3, 24, 11);
+      // Iron tip
+      ctx.fillStyle = '#c8c8c8';
+      ctx.beginPath();
+      ctx.moveTo(wx + 52, wy + 9);
+      ctx.lineTo(wx + 44, wy + 3);
+      ctx.lineTo(wx + 44, wy + 14);
+      ctx.closePath(); ctx.fill();
       break;
-    case 'shotgun':
-      ctx.fillRect(wx - 14, wy, 34, 22);
-      ctx.fillRect(wx + 12, wy - 5, 48, 8); ctx.fillRect(wx + 12, wy + 7, 48, 8);
+    }
+    case 'shotgun': { // Funda — Roman sling
+      // Leather cords
+      ctx.strokeStyle = '#8b6914';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(wx - 16, wy);
+      ctx.quadraticCurveTo(wx + 4, wy - 14, wx + 24, wy);
+      ctx.stroke();
+      // Leather pouch
+      ctx.fillStyle = '#7a4a1e';
+      ctx.beginPath(); ctx.ellipse(wx + 4, wy + 14, 18, 11, 0, 0, Math.PI * 2); ctx.fill();
+      // Stones
+      ctx.fillStyle = '#888';
+      ctx.beginPath(); ctx.arc(wx + 2, wy + 12, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#777';
+      ctx.beginPath(); ctx.arc(wx + 14, wy + 18, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#666';
+      ctx.beginPath(); ctx.arc(wx - 8, wy + 18, 4, 0, Math.PI * 2); ctx.fill();
       break;
-    case 'smg':
-      ctx.fillRect(wx - 8, wy, 22, 16);
-      ctx.fillRect(wx + 8, wy - 6, 50, 8);
-      ctx.fillRect(wx + 2, wy + 14, 8, 14); // mag
+    }
+    case 'smg': { // Arcus — Roman composite bow
+      // Bow stave (C-shape opening right)
+      ctx.strokeStyle = '#6b3a1f';
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.arc(wx - 8, wy + 8, 28, -Math.PI / 3, Math.PI / 3);
+      ctx.stroke();
+      // Bowstring
+      ctx.strokeStyle = '#ddd';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(wx + 6, wy - 16);
+      ctx.lineTo(wx + 6, wy + 32);
+      ctx.stroke();
+      // Arrow shaft
+      ctx.strokeStyle = '#9b5a2b';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(wx - 20, wy + 8);
+      ctx.lineTo(wx + 42, wy + 8);
+      ctx.stroke();
+      // Arrowhead
+      ctx.fillStyle = '#bbb';
+      ctx.beginPath();
+      ctx.moveTo(wx + 44, wy + 8);
+      ctx.lineTo(wx + 32, wy + 3);
+      ctx.lineTo(wx + 32, wy + 13);
+      ctx.closePath(); ctx.fill();
+      // Fletching
+      ctx.fillStyle = '#cc3333';
+      ctx.beginPath();
+      ctx.moveTo(wx - 20, wy + 8);
+      ctx.lineTo(wx - 12, wy + 2);
+      ctx.lineTo(wx - 8, wy + 8);
+      ctx.lineTo(wx - 12, wy + 14);
+      ctx.closePath(); ctx.fill();
       break;
-    case 'rocket':
-      ctx.fillRect(wx - 12, wy, 30, 24);
-      ctx.beginPath(); ctx.ellipse(wx + 22, wy + 12, 18, 14, 0, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#ff6600'; ctx.fillRect(wx + 38, wy + 8, 20, 8);
+    }
+    case 'rocket': { // Onager — Roman torsion catapult
+      // Wooden frame body
+      ctx.fillStyle = '#6b3a1f';
+      ctx.fillRect(wx - 14, wy + 2, 32, 24);
+      // Throwing arm
+      ctx.fillStyle = '#9b5a2b';
+      ctx.save();
+      ctx.translate(wx + 2, wy + 6);
+      ctx.rotate(-0.45);
+      ctx.fillRect(-3, -22, 6, 28);
+      ctx.restore();
+      // Fire pot at top of arm
+      ctx.fillStyle = '#cc4400';
+      ctx.beginPath(); ctx.arc(wx + 16, wy - 4, 10, 0, Math.PI * 2); ctx.fill();
+      // Outer flame
+      ctx.fillStyle = '#ff8800';
+      ctx.beginPath();
+      ctx.moveTo(wx + 10, wy - 8);
+      ctx.quadraticCurveTo(wx + 16, wy - 22, wx + 22, wy - 8);
+      ctx.closePath(); ctx.fill();
+      // Inner flame
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.moveTo(wx + 13, wy - 10);
+      ctx.quadraticCurveTo(wx + 16, wy - 19, wx + 19, wy - 10);
+      ctx.closePath(); ctx.fill();
       break;
-    case 'plasma':
-      ctx.fillRect(wx - 10, wy, 20, 18);
-      ctx.fillStyle = '#0044aa'; ctx.fillRect(wx + 8, wy - 8, 40, 14);
-      ctx.fillStyle = '#00aaff'; ctx.fillRect(wx + 44, wy - 4, 8, 6);
+    }
+    case 'plasma': { // Scorpio — Roman ballista
+      // Wooden frame base
+      ctx.fillStyle = '#6b3a1f';
+      ctx.fillRect(wx - 10, wy + 6, 55, 12);
+      // Bronze torsion arm frame
+      ctx.fillStyle = '#b87333';
+      ctx.fillRect(wx + 6, wy - 8, 10, 32);
+      // Golden spring caps
+      ctx.fillStyle = '#daa520';
+      ctx.fillRect(wx + 5, wy - 10, 12, 7);
+      ctx.fillRect(wx + 5, wy + 24, 12, 7);
+      // Steel bolt in groove
+      ctx.fillStyle = '#aaa';
+      ctx.fillRect(wx + 15, wy + 9, 36, 4);
+      // Bolt tip
+      ctx.fillStyle = '#ddd';
+      ctx.beginPath();
+      ctx.moveTo(wx + 51, wy + 11);
+      ctx.lineTo(wx + 42, wy + 6);
+      ctx.lineTo(wx + 42, wy + 16);
+      ctx.closePath(); ctx.fill();
       break;
-    case 'railgun':
-      ctx.fillRect(wx - 12, wy, 26, 18);
-      ctx.fillRect(wx + 10, wy - 3, 60, 6);
-      ctx.fillStyle = '#00ffcc'; ctx.fillRect(wx + 10, wy + 5, 60, 4);
+    }
+    case 'bfg': { // Falarica — Roman fire javelin
+      // Heavy wooden shaft
+      ctx.fillStyle = '#5a3010';
+      ctx.fillRect(wx - 20, wy + 4, 44, 12);
+      // Bronze collar at the head
+      ctx.fillStyle = '#b87333';
+      ctx.fillRect(wx + 22, wy + 2, 8, 16);
+      // Outer fire mass
+      ctx.fillStyle = '#cc3300';
+      ctx.beginPath(); ctx.arc(wx + 46, wy + 10, 16, 0, Math.PI * 2); ctx.fill();
+      // Mid flame
+      ctx.fillStyle = '#ff6600';
+      ctx.beginPath(); ctx.arc(wx + 46, wy + 10, 11, 0, Math.PI * 2); ctx.fill();
+      // Bright inner core
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath(); ctx.arc(wx + 46, wy + 10, 6, 0, Math.PI * 2); ctx.fill();
       break;
-    case 'bfg':
-      ctx.fillRect(wx - 16, wy - 4, 32, 28);
-      ctx.fillStyle = '#00aa00';
-      ctx.beginPath(); ctx.ellipse(wx + 20, wy + 10, 24, 24, 0, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#00ff44';
-      ctx.beginPath(); ctx.ellipse(wx + 20, wy + 10, 14, 14, 0, 0, Math.PI*2); ctx.fill();
+    }
+    case 'railgun': { // Hasta — Roman long thrusting spear (penetrating)
+      // Long wooden shaft
+      ctx.fillStyle = '#7b4a1e';
+      ctx.fillRect(wx - 26, wy + 5, 70, 8);
+      // Leaf-shaped iron spearhead (broad)
+      ctx.fillStyle = '#909090';
+      ctx.beginPath();
+      ctx.moveTo(wx + 54, wy + 9);   // tip
+      ctx.lineTo(wx + 38, wy + 2);   // upper edge
+      ctx.lineTo(wx + 32, wy + 5);   // upper base
+      ctx.lineTo(wx + 32, wy + 13);  // lower base
+      ctx.lineTo(wx + 38, wy + 16);  // lower edge
+      ctx.closePath(); ctx.fill();
+      // Highlight ridge on spearhead
+      ctx.fillStyle = '#d0d0d0';
+      ctx.beginPath();
+      ctx.moveTo(wx + 54, wy + 9);
+      ctx.lineTo(wx + 38, wy + 4);
+      ctx.lineTo(wx + 34, wy + 9);
+      ctx.closePath(); ctx.fill();
+      // Butt spike (sauroter) at rear
+      ctx.fillStyle = '#777';
+      ctx.beginPath();
+      ctx.moveTo(wx - 30, wy + 9);
+      ctx.lineTo(wx - 26, wy + 5);
+      ctx.lineTo(wx - 26, wy + 13);
+      ctx.closePath(); ctx.fill();
       break;
+    }
     default:
+      ctx.fillStyle = '#aaa';
       ctx.fillRect(wx - 10, wy, 28, 18);
   }
   ctx.restore();
