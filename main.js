@@ -363,12 +363,17 @@ function gameLoop(timestamp) {
   requestAnimationFrame(gameLoop);
 }
 
-await loadAssets();
-requestAnimationFrame(gameLoop);
-
 // ─── Setup screen ─────────────────────────────────────────────────────────────
 
-function startGame(settings) {
+let assetsReady = false;
+const assetsPromise = loadAssets().then(() => { assetsReady = true; }).catch(err => {
+  console.error('Failed to load assets:', err);
+});
+requestAnimationFrame(gameLoop);
+window.startGame = startGame;   // register immediately so button works while assets load
+
+async function startGame(settings) {
+  if (!assetsReady) await assetsPromise;
   document.getElementById('setup').style.display = 'none';
   const loading = document.getElementById('loading');
   const fill    = document.getElementById('loading-fill');
@@ -425,4 +430,3 @@ function startGame(settings) {
   }));
 }
 
-window.startGame = startGame;   // called from HTML
