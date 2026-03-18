@@ -39,12 +39,12 @@ export async function loadAssets() {
   }
 
   const [s0,s1,s2,s3,s4,s5,s6,s7,s8,w1,w2] = await Promise.all([
-    loadImg('images/Sprite0.png'), loadImg('images/Sprite1.png'),
-    loadImg('images/Sprite2.png'), loadImg('images/Sprite3.png'),
-    loadImg('images/Sprite4.png'), loadImg('images/Sprite5.png'),
-    loadImg('images/Sprite6.png'), loadImg('images/Sprite7.png'),
-    loadImg('images/Sprite8.png'),
-    loadImg('images/Wall1.png'),   loadImg('images/Wall2.png'),
+    loadImg('Images/Sprite0.png'), loadImg('Images/Sprite1.png'),
+    loadImg('Images/Sprite2.png'), loadImg('Images/Sprite3.png'),
+    loadImg('Images/Sprite4.png'), loadImg('Images/Sprite5.png'),
+    loadImg('Images/Sprite6.png'), loadImg('Images/Sprite7.png'),
+    loadImg('Images/Sprite8.png'),
+    loadImg('Images/Wall1.png'),   loadImg('Images/Wall2.png'),
   ]);
 
   SPRITES.length = 0;
