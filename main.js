@@ -1,7 +1,7 @@
 // main.js — game loop and orchestration
 import { SCREEN_W, SCREEN_H } from './constants.js';
 import { generateMap }        from './mapgen.js';
-import { initRenderer, renderScene } from './raycaster.js';
+import { initRenderer, renderScene, loadAssets } from './raycaster.js';
 import { renderHUD, renderCrosshair, renderMinimap,
          renderCachePrompt, hitTestCachePrompt,
          renderVictory, renderGameOver,
@@ -363,6 +363,7 @@ function gameLoop(timestamp) {
   requestAnimationFrame(gameLoop);
 }
 
+await loadAssets();
 requestAnimationFrame(gameLoop);
 
 // ─── Setup screen ─────────────────────────────────────────────────────────────

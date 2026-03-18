@@ -9,204 +9,60 @@ export function initRenderer(ctx) {
   imageData = ctx.createImageData(SCREEN_W, SCREEN_H);
   buf32     = new Uint32Array(imageData.data.buffer);
   zBuf      = new Float32Array(SCREEN_W);
-  generateTextures();
-  generateSprites();
 }
 
-// ─── Procedural textures ──────────────────────────────────────────────────────
+export async function loadAssets() {
+  const offscreen = document.createElement('canvas');
+  offscreen.width  = TEX;
+  offscreen.height = TEX;
+  const octx = offscreen.getContext('2d', { willReadFrequently: true });
+
+  function imgToTex(img, transparent) {
+    octx.clearRect(0, 0, TEX, TEX);
+    octx.drawImage(img, 0, 0, TEX, TEX);
+    const { data } = octx.getImageData(0, 0, TEX, TEX);
+    const buf = new Uint32Array(TEX * TEX);
+    for (let i = 0; i < buf.length; i++) {
+      const r = data[i*4], g = data[i*4+1], b = data[i*4+2], a = data[i*4+3];
+      buf[i] = (transparent && a < 128) ? 0 : (0xFF << 24) | (b << 16) | (g << 8) | r;
+    }
+    return buf;
+  }
+
+  function loadImg(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload  = () => resolve(img);
+      img.onerror = () => reject(new Error(`Failed to load ${src}`));
+      img.src = src;
+    });
+  }
+
+  const [s0,s1,s2,s3,s4,s5,s6,s7,s8,w1,w2] = await Promise.all([
+    loadImg('images/Sprite0.png'), loadImg('images/Sprite1.png'),
+    loadImg('images/Sprite2.png'), loadImg('images/Sprite3.png'),
+    loadImg('images/Sprite4.png'), loadImg('images/Sprite5.png'),
+    loadImg('images/Sprite6.png'), loadImg('images/Sprite7.png'),
+    loadImg('images/Sprite8.png'),
+    loadImg('images/Wall1.png'),   loadImg('images/Wall2.png'),
+  ]);
+
+  SPRITES.length = 0;
+  SPRITES.push(
+    imgToTex(s0,true), imgToTex(s1,true), imgToTex(s2,true),
+    imgToTex(s3,true), imgToTex(s4,true), imgToTex(s5,true),
+    imgToTex(s6,true), imgToTex(s7,true), imgToTex(s8,true),
+  );
+  TEXTURES.length = 0;
+  TEXTURES.push(imgToTex(w1,false), imgToTex(w2,false));
+}
+
+// ─── Sprite and texture buffers (populated by loadAssets) ────────────────────
 
 const TEXTURES = [];  // Uint32Array[TEX*TEX] each
+const SPRITES  = [];  // Uint32Array[TEX*TEX] each, 0 = transparent
 
 function pack(r, g, b) { return (0xFF << 24) | (b << 16) | (g << 8) | r; }
-
-function generateTextures() {
-  // Tex 0: limestone blocks (ancient labyrinth)
-  const t0 = new Uint32Array(TEX * TEX);
-  for (let y = 0; y < TEX; y++) {
-    for (let x = 0; x < TEX; x++) {
-      const row  = Math.floor(y / 12);
-      const offX = (row % 2) * 10;
-      const mortV = ((x + offX) % 20) < 2;
-      const mortH = (y % 12) < 2;
-      const n = (x * 11 + y * 7 + row * 29) % 28 - 14;
-      t0[y * TEX + x] = (mortV || mortH)
-        ? pack(75, 65, 50)
-        : pack(185 + n, 165 + n, 120 + n);
-    }
-  }
-  TEXTURES.push(t0);
-
-  // Tex 1: rougher stone (darker passages)
-  const t1 = new Uint32Array(TEX * TEX);
-  for (let y = 0; y < TEX; y++) {
-    for (let x = 0; x < TEX; x++) {
-      const block = Math.floor(y / 10);
-      const seam  = (y % 10) < 2 || (x % 12) < 2;
-      const n = (x * 9 + y * 5 + block * 17) % 22 - 11;
-      t1[y * TEX + x] = seam
-        ? pack(55, 45, 32)
-        : pack(140 + n, 118 + n, 85 + n);
-    }
-  }
-  TEXTURES.push(t1);
-}
-
-// ─── Procedural sprite textures (64×64, 0 = transparent) ─────────────────────
-
-const SPRITES = [];
-
-function makeTex(fn) {
-  const t = new Uint32Array(TEX * TEX); // 0 = transparent
-  const s = (x, y, r, g, b) => {
-    if (x >= 0 && x < TEX && y >= 0 && y < TEX) t[y * TEX + x] = pack(r, g, b);
-  };
-  const rect = (x, y, w, h, r, g, b) => {
-    for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) s(x+dx, y+dy, r, g, b);
-  };
-  const circ = (cx, cy, rad, r, g, b) => {
-    for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++)
-      if (dx*dx + dy*dy <= rad*rad) s(cx+dx, cy+dy, r, g, b);
-  };
-  fn({ rect, circ, s });
-  return t;
-}
-
-function generateSprites() {
-  // 0: Minotaur (bull-headed humanoid)
-  SPRITES.push(makeTex(({ rect, circ, s }) => {
-    // Horns (sweeping upward)
-    rect(16, 1, 6, 16, 195, 155, 80);  rect(42, 1, 6, 16, 195, 155, 80);
-    rect(14, 5, 4, 10, 215, 175, 95);  rect(46, 5, 4, 10, 215, 175, 95);
-    // Head (large, bull-like)
-    circ(32, 16, 13, 145, 102, 58);
-    // Ears
-    circ(18, 12, 5, 160, 115, 65);  circ(46, 12, 5, 160, 115, 65);
-    circ(18, 12, 3, 185, 130, 95);  circ(46, 12, 3, 185, 130, 95);
-    // Eyes (dark, angry red glint)
-    rect(24, 10, 6, 5, 12, 4, 0);  rect(34, 10, 6, 5, 12, 4, 0);
-    s(26, 12, 140, 15, 15);  s(36, 12, 140, 15, 15);
-    // Snout / muzzle
-    circ(32, 21, 7, 162, 115, 70);
-    rect(28, 17, 4, 5, 22, 8, 2);  rect(36, 17, 4, 5, 22, 8, 2);  // nostrils
-    // Neck
-    rect(25, 28, 14, 8, 125, 85, 45);
-    // Torso (wide, muscular)
-    rect(14, 36, 36, 20, 118, 78, 40);
-    // Arms (thick, powerful)
-    rect(2, 36, 12, 20, 105, 68, 34);  rect(50, 36, 12, 20, 105, 68, 34);
-    circ(7, 56, 6, 88, 55, 28);  circ(57, 56, 6, 88, 55, 28);  // fists
-    // Legs
-    rect(16, 56, 13, 7, 105, 68, 34);  rect(35, 56, 13, 7, 105, 68, 34);
-    // Hooves
-    rect(15, 61, 14, 3, 38, 24, 8);  rect(35, 61, 14, 3, 38, 24, 8);
-  }));
-
-  // 1: Cache (gold chest)
-  SPRITES.push(makeTex(({ rect }) => {
-    rect(14, 26, 36, 22, 210, 170, 25); // chest body
-    rect(14, 18, 36,  9, 230, 195, 40); // lid
-    rect(14, 26, 36,  2, 110,  90,  8); // seam
-    rect(30, 18,  4, 30, 110,  90,  8); // clasp
-    rect(29, 33,  6,  6,  55,  45,  4); // keyhole
-  }));
-
-  // 2: Exit portal (bright green rings)
-  SPRITES.push(makeTex(({ circ, rect }) => {
-    circ(32, 34, 20, 20, 180, 40);
-    circ(32, 34, 16,  20, 220,  60);
-    circ(32, 34, 11,  30, 255,  90);
-    circ(32, 34,  6, 200, 255, 150);
-    rect(28,  8,  8, 12,  20, 230,  70); // arrow
-    rect(24, 12, 16,  4,  20, 230,  70);
-  }));
-
-  // 3: Scout (cyan)
-  SPRITES.push(makeTex(({ rect, circ }) => {
-    circ(32, 13, 7, 40, 220, 220);
-    rect(25, 22, 14, 18, 30, 180, 180);
-    rect(16, 23,  9, 10, 20, 150, 150); rect(39, 23,  9, 10, 20, 150, 150);
-    rect(25, 40,  5, 13, 20, 130, 130); rect(34, 40,  5, 13, 20, 130, 130);
-  }));
-
-  // 4: Guard (blue, bulkier)
-  SPRITES.push(makeTex(({ rect, circ }) => {
-    circ(32, 13, 9, 50, 80, 230);
-    rect(20, 23, 24, 22, 40, 60, 200);
-    rect(10, 23, 10, 16, 30, 50, 175); rect(44, 23, 10, 16, 30, 50, 175);
-    rect(20, 45,  9, 14, 25, 40, 160); rect(35, 45,  9, 14, 25, 40, 160);
-  }));
-
-  // 5: Hunter (purple)
-  SPRITES.push(makeTex(({ rect, circ }) => {
-    circ(32, 13, 8, 160, 40, 220);
-    rect(24, 22, 16, 20, 130, 30, 185);
-    rect(15, 23, 9,  13, 105, 25, 155); rect(40, 23, 9, 13, 105, 25, 155);
-    rect(24, 42, 6, 14,  95, 20, 140); rect(34, 42, 6, 14,  95, 20, 140);
-  }));
-
-  // 6: Small health pack (pink heart, +10 HP)
-  SPRITES.push(makeTex(({ s }) => {
-    for (let py = 0; py < TEX; py++) {
-      for (let px = 0; px < TEX; px++) {
-        const nx = (px - 32) / 11;
-        const ny = -(py - 38) / 11;
-        const v = Math.pow(nx*nx + ny*ny - 1, 3) - nx*nx * ny*ny*ny;
-        if (v <= 0) s(px, py, 230, 90, 130);
-      }
-    }
-  }));
-
-  // 7: Large health pack (bright red heart + white cross, full HP restore)
-  SPRITES.push(makeTex(({ s, rect }) => {
-    for (let py = 0; py < TEX; py++) {
-      for (let px = 0; px < TEX; px++) {
-        const nx = (px - 32) / 16;
-        const ny = -(py - 40) / 16;
-        const v = Math.pow(nx*nx + ny*ny - 1, 3) - nx*nx * ny*ny*ny;
-        if (v <= 0) s(px, py, 255, 40, 60);
-      }
-    }
-    rect(30, 24, 4, 13, 255, 255, 255);  // white cross vertical
-    rect(24, 29, 16, 4, 255, 255, 255);  // white cross horizontal
-  }));
-
-  // 8: Nero (Roman Emperor boss — laurel crown, purple toga, torch)
-  SPRITES.push(makeTex(({ rect, circ, s }) => {
-    // Laurel crown (gold band + leaf clusters)
-    rect(14, 4, 36, 4, 200, 165, 0);
-    rect(10, 1, 7, 7, 185, 150, 0);   rect(22, 0, 6, 5, 195, 160, 0);
-    rect(36, 0, 6, 5, 195, 160, 0);   rect(47, 1, 7, 7, 185, 150, 0);
-    // Head (pale Roman skin)
-    circ(32, 16, 11, 218, 182, 140);
-    // Dark beard
-    rect(22, 19, 20, 7, 55, 38, 22);  rect(24, 25, 16, 4, 40, 28, 15);
-    // Eyes (dark, intense)
-    rect(26, 13, 4, 3, 18, 12, 6);    rect(34, 13, 4, 3, 18, 12, 6);
-    s(27, 14, 210, 160, 80);          s(35, 14, 210, 160, 80);
-    // Neck
-    rect(28, 27, 8, 5, 205, 168, 128);
-    // Purple toga body (wide, imperial)
-    rect(8, 32, 48, 24, 105, 12, 155);
-    rect(8, 32, 48, 2, 200, 162, 0);   // gold top trim
-    rect(8, 54, 48, 2, 200, 162, 0);   // gold bottom trim
-    // Left arm + fist
-    rect(4, 34, 8, 20, 92, 10, 138);
-    circ(8, 56, 5, 195, 160, 125);
-    // Right arm (raised — holding torch)
-    rect(52, 28, 8, 16, 92, 10, 138);
-    circ(56, 27, 5, 195, 160, 125);
-    // Torch handle
-    rect(54, 10, 4, 20, 115, 75, 35);
-    // Torch flame (orange + yellow core)
-    rect(51, 2, 10, 9, 240, 110, 10);
-    rect(53, 0, 6, 6, 255, 210, 20);
-    s(56, 0, 255, 255, 120);
-    // Legs (toga)
-    rect(14, 56, 12, 8, 88, 8, 128);   rect(38, 56, 12, 8, 88, 8, 128);
-    // Sandals (gold straps)
-    rect(12, 62, 16, 2, 160, 120, 55); rect(36, 62, 16, 2, 160, 120, 55);
-  }));
-}
 
 // ─── Shade / distance fog ─────────────────────────────────────────────────────
 

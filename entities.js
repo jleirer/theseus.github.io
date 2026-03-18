@@ -230,6 +230,11 @@ function damageEnemy(enemy, dmg, state) {
   if (enemy.health <= 0 && !enemy.dead) {
     enemy.dead = true;
     state.player.kills++;
+    if (enemy.isBoss) {
+      state.healthPacks.push(createHealthPack(enemy.x, enemy.y, 'large'));
+    } else if (Math.random() < 0.3) {
+      state.healthPacks.push(createHealthPack(enemy.x, enemy.y, 'small'));
+    }
     checkDomination(state);
   }
 }
