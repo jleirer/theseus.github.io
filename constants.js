@@ -4,7 +4,7 @@ export const SCREEN_W  = 960;
 export const SCREEN_H  = 540;
 export const HALF_W    = SCREEN_W / 2;
 export const HALF_H    = SCREEN_H / 2;
-export const TEX       = 64;       // texture / sprite size in pixels
+export const TEX       = 128;      // texture / sprite size in pixels
 export const FOV_TAN   = 0.66;     // tan(~33°) → ~66° horizontal FOV
 
 export const MOVE_SPEED    = 3.5;  // tiles / second
