@@ -23,9 +23,44 @@ export async function loadAssets() {
     octx.drawImage(img, 0, 0, TEX, TEX);
     const { data } = octx.getImageData(0, 0, TEX, TEX);
     const buf = new Uint32Array(TEX * TEX);
+
+    // For transparent sprites, flood-fill from all 4 corners to remove solid backgrounds.
+    // This handles PNGs saved without alpha (white, black, or any uniform bg color).
+    let bgMask = null;
+    if (transparent) {
+      bgMask = new Uint8Array(TEX * TEX);
+      // Average background color from the 4 corners
+      const ci = [0, TEX - 1, (TEX - 1) * TEX, TEX * TEX - 1];
+      let br = 0, bg = 0, bb = 0;
+      for (const c of ci) { br += data[c*4]; bg += data[c*4+1]; bb += data[c*4+2]; }
+      br = (br / 4) | 0; bg = (bg / 4) | 0; bb = (bb / 4) | 0;
+
+      const queue = [...ci];
+      for (const c of ci) bgMask[c] = 1;
+      let qi = 0;
+      while (qi < queue.length) {
+        const p = queue[qi++];
+        const px = p % TEX, py = (p / TEX) | 0;
+        const neighbors = [];
+        if (px > 0)       neighbors.push(p - 1);
+        if (px < TEX - 1) neighbors.push(p + 1);
+        if (py > 0)       neighbors.push(p - TEX);
+        if (py < TEX - 1) neighbors.push(p + TEX);
+        for (const n of neighbors) {
+          if (bgMask[n]) continue;
+          const a = data[n*4+3];
+          const dr = data[n*4] - br, dg = data[n*4+1] - bg, db = data[n*4+2] - bb;
+          if (a < 128 || Math.abs(dr) + Math.abs(dg) + Math.abs(db) < 90) {
+            bgMask[n] = 1;
+            queue.push(n);
+          }
+        }
+      }
+    }
+
     for (let i = 0; i < buf.length; i++) {
       const r = data[i*4], g = data[i*4+1], b = data[i*4+2], a = data[i*4+3];
-      buf[i] = (transparent && a < 128) ? 0 : (0xFF << 24) | (b << 16) | (g << 8) | r;
+      buf[i] = (transparent && (a < 128 || bgMask[i])) ? 0 : (0xFF << 24) | (b << 16) | (g << 8) | r;
     }
     return buf;
   }
