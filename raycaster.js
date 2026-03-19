@@ -24,38 +24,40 @@ export async function loadAssets() {
     const { data } = octx.getImageData(0, 0, TEX, TEX);
     const buf = new Uint32Array(TEX * TEX);
 
-    // For transparent sprites, flood-fill from all 4 corners to remove solid backgrounds.
-    // This handles PNGs saved without alpha (white, black, or any uniform bg color).
+    // For transparent sprites, flood-fill from corners to remove solid backgrounds.
+    // Only runs when corners are opaque — sprites with real PNG alpha are left untouched.
     let bgMask = null;
     if (transparent) {
       bgMask = new Uint8Array(TEX * TEX);
-      // Average background color from the 4 corners
       const ci = [0, TEX - 1, (TEX - 1) * TEX, TEX * TEX - 1];
-      let br = 0, bg = 0, bb = 0;
-      for (const c of ci) { br += data[c*4]; bg += data[c*4+1]; bb += data[c*4+2]; }
-      br = (br / 4) | 0; bg = (bg / 4) | 0; bb = (bb / 4) | 0;
+      const cornerAlpha = ci.reduce((s, c) => s + data[c*4+3], 0) / 4;
 
-      const queue = [...ci];
-      for (const c of ci) bgMask[c] = 1;
-      let qi = 0;
-      while (qi < queue.length) {
-        const p = queue[qi++];
-        const px = p % TEX, py = (p / TEX) | 0;
-        const neighbors = [];
-        if (px > 0)       neighbors.push(p - 1);
-        if (px < TEX - 1) neighbors.push(p + 1);
-        if (py > 0)       neighbors.push(p - TEX);
-        if (py < TEX - 1) neighbors.push(p + TEX);
-        for (const n of neighbors) {
-          if (bgMask[n]) continue;
-          const a = data[n*4+3];
-          const dr = data[n*4] - br, dg = data[n*4+1] - bg, db = data[n*4+2] - bb;
-          if (a < 128 || Math.abs(dr) + Math.abs(dg) + Math.abs(db) < 90) {
-            bgMask[n] = 1;
-            queue.push(n);
+      if (cornerAlpha > 200) {
+        // Corners are opaque → solid background; flood-fill to remove it
+        let br = 0, bg = 0, bb = 0;
+        for (const c of ci) { br += data[c*4]; bg += data[c*4+1]; bb += data[c*4+2]; }
+        br = (br / 4) | 0; bg = (bg / 4) | 0; bb = (bb / 4) | 0;
+
+        const queue = [...ci];
+        for (const c of ci) bgMask[c] = 1;
+        let qi = 0;
+        while (qi < queue.length) {
+          const p = queue[qi++];
+          const px = p % TEX, py = (p / TEX) | 0;
+          if (px > 0)       tryFill(p - 1);
+          if (px < TEX - 1) tryFill(p + 1);
+          if (py > 0)       tryFill(p - TEX);
+          if (py < TEX - 1) tryFill(p + TEX);
+          function tryFill(n) {
+            if (bgMask[n]) return;
+            const dr = data[n*4] - br, dg = data[n*4+1] - bg, db = data[n*4+2] - bb;
+            if (data[n*4+3] < 128 || Math.abs(dr) + Math.abs(dg) + Math.abs(db) < 60) {
+              bgMask[n] = 1; queue.push(n);
+            }
           }
         }
       }
+      // If corners are transparent (real alpha PNG), bgMask stays all-zero — no extra removal
     }
 
     for (let i = 0; i < buf.length; i++) {
