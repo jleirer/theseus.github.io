@@ -262,9 +262,9 @@ function spawnBoss(state) {
   state.wave = 3;
   const floor = state.floor || 1;
 
-  let bossHealth, bossSpriteId, bossDamageMult, bossSpeedMult, bossScale, bossText, bossSub, bossName;
+  let bossHealth, bossSpriteId, bossDamageMult, bossSpeedMult, bossScale, bossScaleX, bossText, bossSub, bossName;
   if (floor === 1) {
-    bossHealth = 400; bossSpriteId = 9; bossDamageMult = 2.0; bossSpeedMult = 1.4; bossScale = 1.35;
+    bossHealth = 400; bossSpriteId = 9; bossDamageMult = 2.0; bossSpeedMult = 1.4; bossScale = 1.35; bossScaleX = 1.9;
     bossText = 'THE MEGA-TAUR RISES'; bossSub = 'A BEAST WITHOUT EQUAL';
     bossName = 'MEGA-TAUR';
   } else if (floor === 2) {
@@ -293,7 +293,8 @@ function spawnBoss(state) {
   boss.speedMult = bossSpeedMult;
   boss.damageMult = bossDamageMult;
   boss.spriteId  = bossSpriteId;
-  boss.spriteScale = bossScale;
+  boss.spriteScale  = bossScale;
+  boss.spriteScaleX = bossScaleX;
   boss.bossName  = bossName;
   boss.isBoss    = true;
   boss.aiState   = 'chase';

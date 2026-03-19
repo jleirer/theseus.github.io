@@ -210,7 +210,7 @@ export function renderScene(ctx, state) {
     const screenX = Math.floor(HALF_W * (1 + tX / tY));
     const scale   = spr.spriteScale || 1;
     const sprH    = Math.abs(Math.floor(SCREEN_H / tY * scale));
-    const sprW    = sprH;
+    const sprW    = Math.abs(Math.floor(SCREEN_H / tY * (spr.spriteScaleX || scale)));
 
     const drawY0 = Math.max(0, HALF_H - (sprH >> 1));
     const drawY1 = Math.min(SCREEN_H - 1, HALF_H + (sprH >> 1));
@@ -265,7 +265,7 @@ function collectSprites(state) {
     sprites.push({ x: e.x, y: e.y, spriteId: e.spriteId,
       dist2: Math.hypot(e.x - player.x, e.y - player.y),
       hitTimer: e.hitTimer, health: e.health, maxHealth: e.maxHealth,
-      spriteScale: e.spriteScale || 1 });
+      spriteScale: e.spriteScale || 1, spriteScaleX: e.spriteScaleX });
   }
   for (const m of state.minions) {
     if (m.dead) continue;
