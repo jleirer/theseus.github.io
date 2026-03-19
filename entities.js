@@ -685,20 +685,28 @@ function findFrontierTile(explored, cells, mapW, mapH, ox, oy) {
 
 export function updateExploration(state) {
   const { map, explored, player, minions } = state;
-  revealAround(explored, map.w, map.h, player.x, player.y, 4);
+  revealAround(explored, map.w, map.h, player, 4);
   for (const m of minions) {
-    if (!m.dead) revealAround(explored, map.w, map.h, m.x, m.y, m.exploreRadius);
+    if (!m.dead) revealAround(explored, map.w, map.h, m, m.exploreRadius);
   }
 }
 
-function revealAround(explored, mapW, mapH, cx, cy, radius) {
-  const tx = Math.floor(cx), ty = Math.floor(cy);
+function revealAround(explored, mapW, mapH, entity, radius) {
+  const tx = Math.floor(entity.x), ty = Math.floor(entity.y);
+  // Skip if entity hasn't moved to a new tile since last reveal
+  if (entity._revealTX === tx && entity._revealTY === ty) return;
+  entity._revealTX = tx;
+  entity._revealTY = ty;
   const r  = Math.ceil(radius);
+  const r2 = radius * radius;
   for (let dy = -r; dy <= r; dy++) {
+    const ny = ty + dy;
+    if (ny < 0 || ny >= mapH) continue;
+    const row = ny * mapW;
     for (let dx = -r; dx <= r; dx++) {
-      if (dx*dx + dy*dy > radius*radius) continue;
-      const nx = tx + dx, ny = ty + dy;
-      if (nx >= 0 && ny >= 0 && nx < mapW && ny < mapH) explored[ny * mapW + nx] = 1;
+      if (dx*dx + dy*dy > r2) continue;
+      const nx = tx + dx;
+      if (nx >= 0 && nx < mapW) explored[row + nx] = 1;
     }
   }
 }

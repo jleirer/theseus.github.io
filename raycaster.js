@@ -243,20 +243,26 @@ export function renderScene(ctx, state) {
     const tex = SPRITES[spr.spriteId] || SPRITES[0];
     const shade = Math.min(1.0, 5.5 / (tY + 0.8));
 
+    // Pre-compute per-sprite values outside all loops
+    const flash     = spr.hitTimer > 0 ? Math.min(1, spr.hitTimer * 8) : 0;
+    const bloodFrac = (spr.health != null) ? Math.max(0, 1 - spr.health / spr.maxHealth) : 0;
+    const bf2       = bloodFrac * bloodFrac;
+    const texScale  = TEX / sprW;
+    const texYBase  = HALF_H - sprH / 2;
+    const sprXOff   = screenX - sprW / 2;
+
     for (let sx2 = drawX0; sx2 <= drawX1; sx2++) {
       if (zBuf[sx2] < tY) continue;  // behind wall
-      const texX2 = Math.floor((sx2 - (screenX - sprW / 2)) * TEX / sprW);
-      const flash = spr.hitTimer > 0 ? Math.min(1, spr.hitTimer * 8) : 0;
-      const bloodFrac = (spr.health != null) ? Math.max(0, 1 - spr.health / spr.maxHealth) : 0;
+      const texX2 = Math.floor((sx2 - sprXOff) * texScale);
+      const texCol = texX2 * TEX; // precompute column offset into texture
       for (let sy2 = drawY0; sy2 <= drawY1; sy2++) {
-        const texY = Math.floor((sy2 - (HALF_H - sprH / 2)) * TEX / sprH);
-        const raw  = tex[texY * TEX + texX2];
+        const texY = Math.floor((sy2 - texYBase) * TEX / sprH);
+        const raw  = tex[texY + texCol];
         if (!raw) continue; // transparent
         let r = ((raw & 0xFF) * shade) | 0;
         let g = (((raw >> 8) & 0xFF) * shade) | 0;
         let b = (((raw >> 16) & 0xFF) * shade) | 0;
         if (bloodFrac > 0) {
-          const bf2 = bloodFrac * bloodFrac;
           r = Math.min(255, r + ((190 * bf2) | 0));
           g = Math.max(0, (g * (1 - bloodFrac * 0.65)) | 0);
           b = Math.max(0, (b * (1 - bloodFrac * 0.75)) | 0);

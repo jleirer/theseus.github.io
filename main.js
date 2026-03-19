@@ -340,9 +340,11 @@ function gameLoop(timestamp) {
       updateEntities(state, dt);
       updateExploration(state);
       checkInteractions(state);
-      // Tick and expire effects
-      for (const eff of state.effects) eff.timer -= dt;
-      state.effects = state.effects.filter(e => e.timer > 0);
+      // Tick and expire effects (in-place to avoid allocation)
+      for (let i = state.effects.length - 1; i >= 0; i--) {
+        state.effects[i].timer -= dt;
+        if (state.effects[i].timer <= 0) state.effects.splice(i, 1);
+      }
       if (state.waveMessage) {
         state.waveMessage.timer -= dt;
         if (state.waveMessage.timer <= 0) state.waveMessage = null;

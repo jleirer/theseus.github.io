@@ -16,10 +16,12 @@ export function findPath(cells, mapW, mapH, x1, y1, x2, y2) {
 
   let iter = 0;
   while (open.length > 0 && iter++ < 1500) {
-    // Pop lowest f (simple scan; acceptable for ≤64² maps)
+    // Pop lowest f — swap with last then pop (O(1) remove vs O(n) splice)
     let mi = 0;
     for (let i = 1; i < open.length; i++) if (open[i].f < open[mi].f) mi = i;
-    const cur = open.splice(mi, 1)[0];
+    const cur = open[mi];
+    open[mi] = open[open.length - 1];
+    open.pop();
     const ck  = key(cur.x, cur.y);
 
     if (cur.x === gx && cur.y === gy) {
