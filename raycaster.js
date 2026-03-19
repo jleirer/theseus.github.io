@@ -262,10 +262,9 @@ export function renderScene(ctx, state) {
     for (let sx2 = drawX0; sx2 <= drawX1; sx2++) {
       if (zBuf[sx2] < tY) continue;  // behind wall
       const texX2 = Math.floor((sx2 - sprXOff) * texScale);
-      const texCol = texX2 * TEX; // precompute column offset into texture
       for (let sy2 = drawY0; sy2 <= drawY1; sy2++) {
         const texY = Math.floor((sy2 - texYBase) * TEX / sprH);
-        const raw  = tex[texY + texCol];
+        const raw  = tex[texY * TEX + texX2];
         if (!raw) continue; // transparent
         let r = ((raw & 0xFF) * shade) | 0;
         let g = (((raw >> 8) & 0xFF) * shade) | 0;
