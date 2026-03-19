@@ -184,5 +184,19 @@ export function generateMap(sizeKey, numEnemies) {
   const lr = rooms[largeRi];
   healthPackPositions.push({ x: lr.x + lr.w / 2 + 0.5, y: lr.y + lr.h / 2 + 0.5, size: 'large' });
 
-  return { cells, w, h, rooms, startPos, exitPos, enemyPositions, cachePositions, healthPackPositions };
+  // Altars — 2-3 per floor in unique rooms (not start room)
+  const altarGodIds = ['mars', 'mercury', 'vulcan', 'apollo', 'minerva', 'fortuna'];
+  const numAltars = 2 + Math.floor(Math.random() * 2);
+  const altarPositions = [];
+  const altarUsed = new Set([0]);
+  for (let i = 0; i < numAltars; i++) {
+    let ri = 0, att = 0;
+    while (altarUsed.has(ri) && att++ < 30) ri = Math.floor(Math.random() * rooms.length);
+    altarUsed.add(ri);
+    const r = rooms[ri];
+    const godId = altarGodIds[Math.floor(Math.random() * altarGodIds.length)];
+    altarPositions.push({ x: r.x + r.w / 2 + 0.5, y: r.y + r.h / 2 + 0.5, godId });
+  }
+
+  return { cells, w, h, rooms, startPos, exitPos, enemyPositions, cachePositions, healthPackPositions, altarPositions };
 }

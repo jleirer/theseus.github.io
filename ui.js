@@ -1,5 +1,5 @@
 // ui.js — HUD, minimap, overlays
-import { SCREEN_W, SCREEN_H, HALF_W, HALF_H, FOV_TAN, WEAPONS, TECH_PREREQS, TECH_NODE_POS, MINION_STATS } from './constants.js';
+import { SCREEN_W, SCREEN_H, HALF_W, HALF_H, FOV_TAN, WEAPONS, TECH_PREREQS, TECH_NODE_POS, MINION_STATS, ALTAR_GODS } from './constants.js';
 import { weaponNodeState } from './weapons.js';
 import { hasLOS } from './pathfinding.js';
 
@@ -25,7 +25,7 @@ export function renderCrosshair(ctx) {
 // ─── HUD ──────────────────────────────────────────────────────────────────────
 
 export function renderHUD(ctx, state) {
-  const { player, enemies, caches, exit } = state;
+  const { player, enemies } = state;
 
   // --- Bottom-right: health ---
   const bx = SCREEN_W - 215, by = SCREEN_H - 48;
@@ -58,34 +58,59 @@ export function renderHUD(ctx, state) {
 
   drawWeaponSprite(ctx, player.activeWeapon, state);
 
-  // --- Top bar: win conditions ---
+  // --- Altar prompt ---
+  if (state.nearAltar) {
+    const god = ALTAR_GODS[state.nearAltar.godId];
+    if (god) {
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(SCREEN_W / 2 - 160, SCREEN_H - 112, 320, 64);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = god.color;
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText(`ALTAR OF ${god.name.toUpperCase()}`, SCREEN_W / 2, SCREEN_H - 90);
+      ctx.fillStyle = '#ccc';
+      ctx.font = '12px monospace';
+      ctx.fillText(`${god.desc}   [E] to receive blessing`, SCREEN_W / 2, SCREEN_H - 70);
+      ctx.textAlign = 'left';
+    }
+  }
+
+  // --- Top bar ---
   const totalEnemies = enemies.length;
   const deadEnemies  = enemies.filter(e => e.dead).length;
 
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fillRect(0, 0, SCREEN_W, 28);
-
   ctx.font = '12px monospace';
 
-  // Wave
+  // Floor + Wave
+  const floor = state.floor || 1;
+  ctx.fillStyle = '#aaaaff';
+  ctx.fillText(`FLOOR ${floor}`, SCREEN_W - 168, 18);
   ctx.fillStyle = state.wave >= 2 ? '#ff8844' : '#666';
-  ctx.fillText(`WAVE ${state.wave}`, SCREEN_W - 70, 18);
+  ctx.fillText(`WAVE ${state.wave}`, SCREEN_W - 68, 18);
 
-  // Domination
+  // Kills
   const domDone = deadEnemies === totalEnemies && totalEnemies > 0;
   ctx.fillStyle = domDone ? '#00ff44' : '#ff4444';
   ctx.fillText(`⚔ ${deadEnemies}/${totalEnemies} SLAIN`, 12, 18);
 
-  // Escape
+  // Exit status
   const nearExit = state.exit &&
     Math.hypot(state.player.x - state.exit.x, state.player.y - state.exit.y) < 1.5;
-  ctx.fillStyle = nearExit ? '#00ff44' : '#88aaff';
-  ctx.fillText(`⬡ EXIT:${nearExit ? ' [E] FLEE' : ' NOT REACHED'}`, 200, 18);
+  const exitOpen = state.exitOpen;
+  ctx.fillStyle = nearExit && exitOpen ? '#00ff44' : nearExit ? '#ff6622' : exitOpen ? '#88ffaa' : '#666';
+  ctx.fillText(
+    nearExit && exitOpen ? '⬡ EXIT: [E] DESCEND' :
+    nearExit             ? '⬡ EXIT: LOCKED — DEFEAT THE BOSS' :
+    exitOpen             ? '⬡ EXIT: OPEN'                      : '⬡ EXIT: LOCKED',
+    200, 18,
+  );
 
   // Minion count
   const aliveMins = state.minions.filter(m => !m.dead).length;
   ctx.fillStyle = '#aaddff';
-  ctx.fillText(`◉ ALLIES: ${aliveMins}`, 420, 18);
+  ctx.fillText(`◉ ALLIES: ${aliveMins}`, 430, 18);
 }
 
 // Simple weapon sprite at bottom-center
@@ -663,14 +688,21 @@ export function renderWaveMessage(ctx, waveMessage) {
     ctx.fillText(waveMessage.text, SCREEN_W / 2, SCREEN_H / 2 + 3);
     ctx.fillStyle = '#aa6600';
     ctx.font = '15px monospace';
-    ctx.fillText('THE EMPEROR OF ROME HAS COME TO FINISH YOU', SCREEN_W / 2, SCREEN_H / 2 + 24);
+    ctx.fillText(waveMessage.subtitle || 'PREPARE YOURSELF', SCREEN_W / 2, SCREEN_H / 2 + 24);
+  } else if (waveMessage.isBless) {
+    ctx.fillStyle = waveMessage.godColor || '#ffdd44';
+    ctx.font = 'bold 36px monospace';
+    ctx.fillText(waveMessage.text, SCREEN_W / 2, SCREEN_H / 2 + 3);
+    ctx.fillStyle = '#dddddd';
+    ctx.font = '14px monospace';
+    ctx.fillText(waveMessage.subtitle || '', SCREEN_W / 2, SCREEN_H / 2 + 24);
   } else {
-    ctx.fillStyle = '#ff6622';
+    ctx.fillStyle = waveMessage.subtitle ? '#88ffaa' : '#ff6622';
     ctx.font = 'bold 36px monospace';
     ctx.fillText(waveMessage.text, SCREEN_W / 2, SCREEN_H / 2 + 3);
     ctx.fillStyle = '#cc4400';
     ctx.font = '14px monospace';
-    ctx.fillText('FASTER · STRONGER · ANGRIER', SCREEN_W / 2, SCREEN_H / 2 + 22);
+    ctx.fillText(waveMessage.subtitle || 'FASTER · STRONGER · ANGRIER', SCREEN_W / 2, SCREEN_H / 2 + 22);
   }
   ctx.textAlign = 'left';
   ctx.restore();
@@ -783,4 +815,24 @@ export function renderGameOver(ctx, state) {
   ctx.fillText('Press R to enter the labyrinth again', SCREEN_W / 2, SCREEN_H / 2 + 55);
   ctx.textAlign = 'left';
   drawMenuButton(ctx);
+}
+
+export function renderFloorTransition(ctx, state) {
+  const floor = state.floor || 1;
+  const timer = state.floorAdvanceTimer ?? 2.5;
+  const alpha = timer <= 0.5 ? timer / 0.5 : 1;
+  const subtitles = { 2: 'THE LABYRINTH DEEPENS', 3: 'THE REALM OF THE DEAD AWAITS' };
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ccaaff';
+  ctx.font = 'bold 52px monospace';
+  ctx.fillText(`FLOOR  ${floor}`, SCREEN_W / 2, SCREEN_H / 2 - 20);
+  ctx.fillStyle = '#998866';
+  ctx.font = '18px monospace';
+  ctx.fillText(subtitles[floor] || '', SCREEN_W / 2, SCREEN_H / 2 + 20);
+  ctx.textAlign = 'left';
+  ctx.restore();
 }

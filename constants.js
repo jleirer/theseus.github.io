@@ -84,3 +84,13 @@ export const TECH_NODE_POS = {
   bfg:     { x: 175, y: 350 },
   railgun: { x: 525, y: 350 },
 };
+
+// God altars — each grants a unique player buff
+export const ALTAR_GODS = {
+  mars:    { name: 'Mars',    boon: 'damageMult',   value: 1.3, desc: '+30% Weapon Damage',   color: '#cc2200' },
+  mercury: { name: 'Mercury', boon: 'speedMult',    value: 1.3, desc: '+30% Movement Speed',  color: '#88ccff' },
+  vulcan:  { name: 'Vulcan',  boon: 'fireRateMult', value: 1.3, desc: '+30% Fire Rate',       color: '#ff8800' },
+  apollo:  { name: 'Apollo',  boon: 'heal',         value: 1.0, desc: 'Restore Full Health',  color: '#ffdd44' },
+  minerva: { name: 'Minerva', boon: 'revealMap',    value: 1.0, desc: 'Reveal the Labyrinth', color: '#aaaaff' },
+  fortuna: { name: 'Fortuna', boon: 'random',       value: 1.0, desc: 'A Random Blessing',    color: '#cc44cc' },
+};

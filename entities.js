@@ -3,7 +3,7 @@ import {
   MOVE_SPEED, ROT_SPEED, ENTITY_RADIUS,
   ENEMY_HEALTH, ENEMY_SPEED, ENEMY_SIGHT, ENEMY_ATTACK_RANGE,
   ENEMY_FIRE_RATE, ENEMY_DAMAGE,
-  MINION_STATS, WEAPONS,
+  MINION_STATS, WEAPONS, ALTAR_GODS,
 } from './constants.js';
 import { findPath, hasLOS, randomNearbyFloor } from './pathfinding.js';
 
@@ -88,6 +88,10 @@ export function createHealthPack(x, y, size) {
   return { type: 'healthPack', x, y, size, hp: size === 'small' ? 10 : 0, collected: false, spriteId: size === 'small' ? 6 : 7 };
 }
 
+export function createAltar(x, y, godId) {
+  return { type: 'altar', x, y, godId, used: false, spriteId: 11 };
+}
+
 // ─── Collision ────────────────────────────────────────────────────────────────
 
 function solid(cells, mapW, mapH, x, y) {
@@ -122,10 +126,11 @@ export function updatePlayer(state, dt) {
   const perpX = -sin, perpY = cos;
 
   let dx = 0, dy = 0;
-  if (input.forward)  { dx += cos * MOVE_SPEED * dt; dy += sin * MOVE_SPEED * dt; }
-  if (input.back)     { dx -= cos * MOVE_SPEED * dt; dy -= sin * MOVE_SPEED * dt; }
-  if (input.strafeL)  { dx += perpX * MOVE_SPEED * dt; dy += perpY * MOVE_SPEED * dt; }
-  if (input.strafeR)  { dx -= perpX * MOVE_SPEED * dt; dy -= perpY * MOVE_SPEED * dt; }
+  const spd = MOVE_SPEED * (p.speedMult || 1);
+  if (input.forward)  { dx += cos * spd * dt; dy += sin * spd * dt; }
+  if (input.back)     { dx -= cos * spd * dt; dy -= sin * spd * dt; }
+  if (input.strafeL)  { dx += perpX * spd * dt; dy += perpY * spd * dt; }
+  if (input.strafeR)  { dx -= perpX * spd * dt; dy -= perpY * spd * dt; }
 
   p.isMoving = (dx !== 0 || dy !== 0);
   if (p.isMoving) p.bobTimer += dt * 8;
@@ -155,7 +160,7 @@ export function shootPlayer(state) {
   const p = state.player;
   if (p.fireTimer > 0) return;
   const weapon = WEAPONS[p.activeWeapon];
-  p.fireTimer = 1 / weapon.fireRate;
+  p.fireTimer = 1 / (weapon.fireRate * (p.fireRateMult || 1));
 
   const pellets = weapon.pellets || 1;
   const alreadyHit = new Set();
@@ -172,7 +177,7 @@ export function shootPlayer(state) {
         if (e.dead) continue;
         const t = rayCircleT(p.x, p.y, rdx, rdy, e.x, e.y, ENTITY_RADIUS + 0.1);
         if (t !== null && hasLOS(state.cells, state.map.w, state.map.h, p.x, p.y, e.x, e.y)) {
-          damageEnemy(e, weapon.damage, state);
+          damageEnemy(e, Math.round(weapon.damage * (p.damageMult || 1)), state);
           anyHit = true;
         }
       }
@@ -185,7 +190,7 @@ export function shootPlayer(state) {
           bestT = t; bestE = e;
         }
       }
-      if (bestE) { alreadyHit.add(bestE.id); damageEnemy(bestE, weapon.damage, state); anyHit = true; }
+      if (bestE) { alreadyHit.add(bestE.id); damageEnemy(bestE, Math.round(weapon.damage * (p.damageMult || 1)), state); anyHit = true; }
     }
   }
 
@@ -207,7 +212,7 @@ export function shootPlayer(state) {
       const d = Math.hypot(e.x - impactX, e.y - impactY);
       if (d <= weapon.splash) {
         const falloff = 1 - d / weapon.splash;
-        damageEnemy(e, Math.floor(weapon.damage * falloff), state);
+        damageEnemy(e, Math.floor(weapon.damage * (p.damageMult || 1) * falloff), state);
       }
     }
   }
@@ -232,6 +237,7 @@ function damageEnemy(enemy, dmg, state) {
     state.player.kills++;
     if (enemy.isBoss) {
       state.healthPacks.push(createHealthPack(enemy.x, enemy.y, 'large'));
+      state.exitOpen = true;
     } else if (Math.random() < 0.3) {
       state.healthPacks.push(createHealthPack(enemy.x, enemy.y, 'small'));
     }
@@ -242,7 +248,8 @@ function damageEnemy(enemy, dmg, state) {
 function checkDomination(state) {
   if (!state.enemies.every(e => e.dead)) return;
   if (state.wave >= 3) {
-    triggerVictory(state, 'domination');
+    // exitOpen already set by damageEnemy; just prompt the player
+    state.waveMessage = { text: 'THE PATH IS OPEN', subtitle: 'REACH THE EXIT TO DESCEND', timer: 3.5 };
   } else if (state.wave === 2) {
     spawnBoss(state);
   } else {
@@ -252,10 +259,23 @@ function checkDomination(state) {
 
 function spawnBoss(state) {
   state.wave = 3;
-  state.waveMessage = { text: 'NERO DESCENDS UPON YOU', timer: 4.0, isBoss: true };
+  const floor = state.floor || 1;
+
+  let bossHealth, bossSpriteId, bossDamageMult, bossSpeedMult, bossScale, bossText, bossSub;
+  if (floor === 1) {
+    bossHealth = 400; bossSpriteId = 9; bossDamageMult = 2.0; bossSpeedMult = 1.4; bossScale = 1.35;
+    bossText = 'THE MEGA-TAUR RISES'; bossSub = 'A BEAST WITHOUT EQUAL';
+  } else if (floor === 2) {
+    bossHealth = 600; bossSpriteId = 8; bossDamageMult = 3.0; bossSpeedMult = 1.2; bossScale = 1.0;
+    bossText = 'NERO DESCENDS UPON YOU'; bossSub = 'THE EMPEROR OF ROME HAS COME TO FINISH YOU';
+  } else {
+    bossHealth = 900; bossSpriteId = 10; bossDamageMult = 4.0; bossSpeedMult = 1.5; bossScale = 1.5;
+    bossText = 'HADES WALKS AMONG THE LIVING'; bossSub = 'THE GOD OF THE DEAD CLAIMS HIS DOMAIN';
+  }
+  state.waveMessage = { text: bossText, subtitle: bossSub, timer: 4.0, isBoss: true };
 
   const rooms = state.map.rooms;
-  if (!rooms || rooms.length === 0) { triggerVictory(state, 'domination'); return; }
+  if (!rooms || rooms.length === 0) { state.exitOpen = true; return; }
   const px = state.player.x, py = state.player.y;
   let farthest = rooms[0], maxDist = 0;
   for (const r of rooms) {
@@ -264,11 +284,12 @@ function spawnBoss(state) {
   }
 
   const boss = createEnemy(farthest.x + farthest.w / 2 + 0.5, farthest.y + farthest.h / 2 + 0.5, 0);
-  boss.health    = 600;
-  boss.maxHealth = 600;
-  boss.speedMult = 1.2;
-  boss.damageMult = 3.0;
-  boss.spriteId  = 8;
+  boss.health    = bossHealth;
+  boss.maxHealth = bossHealth;
+  boss.speedMult = bossSpeedMult;
+  boss.damageMult = bossDamageMult;
+  boss.spriteId  = bossSpriteId;
+  boss.spriteScale = bossScale;
   boss.isBoss    = true;
   boss.aiState   = 'chase';
   boss.lastKnownPX = px;
@@ -331,6 +352,34 @@ function spawnCacheWave(state) {
 
 function triggerVictory(state, type) {
   if (state.phase === 'playing') { state.phase = 'victory'; state.victoryType = type; }
+}
+
+function applyAltarBoon(player, altar, state) {
+  const god = ALTAR_GODS[altar.godId];
+  if (!god) return;
+  let boon = god.boon;
+  if (boon === 'random') {
+    const options = ['damageMult', 'speedMult', 'fireRateMult', 'heal'];
+    boon = options[Math.floor(Math.random() * options.length)];
+  }
+  if (boon === 'damageMult')   player.damageMult   = (player.damageMult   || 1) * 1.3;
+  if (boon === 'speedMult')    player.speedMult    = (player.speedMult    || 1) * 1.3;
+  if (boon === 'fireRateMult') player.fireRateMult = (player.fireRateMult || 1) * 1.3;
+  if (boon === 'heal')         player.health = player.maxHealth;
+  if (boon === 'revealMap') {
+    for (let i = 0; i < state.explored.length; i++) {
+      if (state.cells[i] === 0) state.explored[i] = 1;
+    }
+  }
+  const boonDescs = {
+    damageMult: '+30% Weapon Damage', speedMult: '+30% Movement Speed',
+    fireRateMult: '+30% Fire Rate', heal: 'Health Restored', revealMap: 'Labyrinth Revealed',
+  };
+  state.waveMessage = {
+    text: `BLESSED BY ${god.name.toUpperCase()}`,
+    subtitle: boonDescs[boon] || '',
+    timer: 3.0, isBless: true, godColor: god.color,
+  };
 }
 
 // ─── Enemy AI ─────────────────────────────────────────────────────────────────
@@ -508,12 +557,7 @@ function minionAttack(minion, enemy, dt, state) {
   if (minion.fireTimer > 0) return;
   minion.fireTimer = minion.fireRate;
   if (Math.random() < 0.7) {
-    enemy.health -= minion.attackDamage;
-    if (enemy.health <= 0 && !enemy.dead) {
-      enemy.dead = true;
-      state.player.kills++;
-      checkDomination(state);
-    }
+    damageEnemy(enemy, minion.attackDamage, state);
   }
 }
 
@@ -685,12 +729,31 @@ export function checkInteractions(state) {
     }
   }
 
-  // Exit proximity + interact key
-  if (state.exit && state.keys?.KeyE &&
-      Math.hypot(p.x - state.exit.x, p.y - state.exit.y) < 1.2) {
-    triggerVictory(state, 'escape');
+  // Altar proximity + interact
+  let foundAltar = null;
+  for (const altar of (state.altars || [])) {
+    if (!altar.used && Math.hypot(p.x - altar.x, p.y - altar.y) < 1.2) {
+      foundAltar = altar; break;
+    }
+  }
+  state.nearAltar = foundAltar;
+  if (foundAltar && state.keys?.KeyE) {
+    applyAltarBoon(p, foundAltar, state);
+    foundAltar.used = true;
+    state.keys.KeyE = false;
+    return;
   }
 
+  // Exit — only open after floor boss is defeated
+  if (state.exit && state.exitOpen && state.keys?.KeyE &&
+      Math.hypot(p.x - state.exit.x, p.y - state.exit.y) < 1.2) {
+    state.keys.KeyE = false;
+    if ((state.floor || 1) >= 3) {
+      triggerVictory(state, 'domination');
+    } else {
+      state.phase = 'floorAdvance';
+    }
+  }
 }
 
 // ─── Main update dispatcher ───────────────────────────────────────────────────

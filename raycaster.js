@@ -11,6 +11,22 @@ export function initRenderer(ctx) {
   zBuf      = new Float32Array(SCREEN_W);
 }
 
+function makeTex(fn) {
+  const t = new Uint32Array(TEX * TEX);
+  const s = (x, y, r, g, b) => {
+    if (x >= 0 && x < TEX && y >= 0 && y < TEX) t[y * TEX + x] = pack(r, g, b);
+  };
+  const rect = (x, y, w, h, r, g, b) => {
+    for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) s(x+dx, y+dy, r, g, b);
+  };
+  const circ = (cx, cy, rad, r, g, b) => {
+    for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++)
+      if (dx*dx + dy*dy <= rad*rad) s(cx+dx, cy+dy, r, g, b);
+  };
+  fn({ rect, circ, s });
+  return t;
+}
+
 export async function loadAssets() {
   const offscreen = document.createElement('canvas');
   offscreen.width  = TEX;
@@ -55,6 +71,61 @@ export async function loadAssets() {
   );
   TEXTURES.length = 0;
   TEXTURES.push(imgToTex(w1,false), imgToTex(w2,false));
+
+  // Sprites 9-11: procedural
+  SPRITES.push(makeTex(({ rect, circ, s }) => {
+    // 9: Mega-taur — dark giant minotaur
+    rect(12, 0, 8, 18, 120, 20, 20);   rect(44, 0, 8, 18, 120, 20, 20);
+    rect(10, 4, 5, 12, 100, 15, 15);   rect(49, 4, 5, 12, 100, 15, 15);
+    circ(32, 17, 15, 80, 45, 25);
+    circ(16, 12, 6, 90, 50, 30);  circ(48, 12, 6, 90, 50, 30);
+    circ(16, 12, 4, 110, 60, 40); circ(48, 12, 4, 110, 60, 40);
+    rect(22,  9, 7, 6, 8, 2, 2);  rect(35,  9, 7, 6, 8, 2, 2);
+    s(24, 11, 220, 20, 20); s(25, 11, 255, 40, 40);
+    s(37, 11, 220, 20, 20); s(38, 11, 255, 40, 40);
+    circ(32, 23, 8, 95, 55, 32);
+    rect(27, 19, 4, 6, 18, 5, 2);  rect(37, 19, 4, 6, 18, 5, 2);
+    rect(24, 32, 16, 7, 65, 35, 18);
+    rect(10, 39, 44, 20, 58, 30, 14);
+    rect( 0, 39, 10, 22, 50, 25, 12);  rect(54, 39, 10, 22, 50, 25, 12);
+    circ( 5, 62,  7, 40, 18,  8);  circ(59, 62,  7, 40, 18,  8);
+    rect(12, 59, 15,  5, 58, 30, 14);  rect(37, 59, 15,  5, 58, 30, 14);
+    rect(11, 62, 16,  2, 20, 10,  4);  rect(37, 62, 16,  2, 20, 10,  4);
+  }));
+  SPRITES.push(makeTex(({ rect, circ, s }) => {
+    // 10: Hades — god of the underworld
+    rect(16, 1, 32, 4, 30, 10, 60);
+    rect(20, 0,  6, 6, 50, 15,  90);  rect(38, 0, 6, 6, 50, 15, 90);
+    rect(29, 0,  6, 8, 60, 20, 110);
+    circ(32, 16, 11, 180, 175, 185);
+    rect(25, 13,  5, 4, 10,  5, 25);  rect(34, 13, 5, 4, 10,  5, 25);
+    s(27, 14, 80, 40, 180); s(36, 14, 80, 40, 180);
+    rect(23, 20, 18, 7, 40, 35, 55);  rect(25, 26, 14, 4, 30, 25, 45);
+    rect(28, 28,  8, 4, 165, 160, 170);
+    rect( 6, 32, 52, 24, 25, 10, 45);
+    rect( 6, 32, 52,  2, 70, 30, 110);  rect( 6, 54, 52, 2, 70, 30, 110);
+    rect( 2, 34,  8, 20, 20,  8, 38);
+    circ( 6, 56,  5, 155, 148, 165);
+    rect(54, 28,  8, 16, 20,  8, 38);
+    circ(58, 27,  5, 155, 148, 165);
+    rect(56,  4,  4, 26, 80, 60, 100);
+    rect(54,  2,  3,  6, 120, 100, 180);  rect(59, 2, 3, 6, 120, 100, 180);
+    rect(14, 56, 12,  8, 22,  8, 40);  rect(38, 56, 12,  8, 22,  8, 40);
+    rect(12, 62, 16,  2, 60, 50, 80);  rect(36, 62, 16,  2, 60, 50, 80);
+  }));
+  SPRITES.push(makeTex(({ rect, circ, s }) => {
+    // 11: Roman altar / shrine
+    rect(14, 44, 36, 18, 130, 118, 100);
+    rect(10, 44,  4, 18, 110, 100,  85);  rect(50, 44, 4, 18, 110, 100, 85);
+    rect(12, 56, 40,  6, 115, 105,  88);
+    rect(16, 38, 32,  8, 140, 128, 108);
+    rect(16, 48, 32,  2, 100,  90,  75);
+    circ(32, 36,  7, 200, 100,  20);
+    circ(32, 33,  5, 240, 140,  30);
+    circ(32, 30,  4, 255, 180,  50);
+    circ(32, 27,  3, 255, 220, 100);
+    s(32, 25, 255, 240, 200);
+  }));
 }
 
 // ─── Sprite and texture buffers (populated by loadAssets) ────────────────────
@@ -160,7 +231,8 @@ export function renderScene(ctx, state) {
     if (tY <= 0.2) continue;
 
     const screenX = Math.floor(HALF_W * (1 + tX / tY));
-    const sprH    = Math.abs(Math.floor(SCREEN_H / tY));
+    const scale   = spr.spriteScale || 1;
+    const sprH    = Math.abs(Math.floor(SCREEN_H / tY * scale));
     const sprW    = sprH;
 
     const drawY0 = Math.max(0, HALF_H - (sprH >> 1));
@@ -210,7 +282,8 @@ function collectSprites(state) {
     if (e.dead) continue;
     sprites.push({ x: e.x, y: e.y, spriteId: e.spriteId,
       dist2: Math.hypot(e.x - player.x, e.y - player.y),
-      hitTimer: e.hitTimer, health: e.health, maxHealth: e.maxHealth });
+      hitTimer: e.hitTimer, health: e.health, maxHealth: e.maxHealth,
+      spriteScale: e.spriteScale || 1 });
   }
   for (const m of state.minions) {
     if (m.dead) continue;
@@ -230,6 +303,11 @@ function collectSprites(state) {
     if (hp.collected) continue;
     sprites.push({ x: hp.x, y: hp.y, spriteId: hp.spriteId,
       dist2: Math.hypot(hp.x - player.x, hp.y - player.y) });
+  }
+  for (const altar of (state.altars || [])) {
+    if (altar.used) continue;
+    sprites.push({ x: altar.x, y: altar.y, spriteId: 11,
+      dist2: Math.hypot(altar.x - player.x, altar.y - player.y) });
   }
   return sprites;
 }

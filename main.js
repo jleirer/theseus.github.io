@@ -6,9 +6,9 @@ import { renderHUD, renderCrosshair, renderMinimap,
          renderCachePrompt, hitTestCachePrompt,
          renderVictory, renderGameOver,
          renderClickToPlay, renderEffects, renderEnemyHealthBars,
-         renderWaveMessage, renderBossHealthBar, hitTestMenuButton } from './ui.js';
+         renderWaveMessage, renderBossHealthBar, hitTestMenuButton, renderFloorTransition } from './ui.js';
 import {
-  createPlayer, createEnemy, createMinion, createCache, createExit, createHealthPack,
+  createPlayer, createEnemy, createMinion, createCache, createExit, createHealthPack, createAltar,
   updateEntities, updateExploration, checkInteractions, shootPlayer, spawnMinion,
 } from './entities.js';
 import { getUnlockableWeapons, weaponNodeState } from './weapons.js';
@@ -322,6 +322,19 @@ function gameLoop(timestamp) {
   lastTime = timestamp;
 
   if (state) {
+    if (state.phase === 'floorAdvance') {
+      if (state.floorAdvanceTimer == null) {
+        state.floor = (state.floor || 1) + 1;
+        generateNextFloor(state);
+        state.floorAdvanceTimer = 2.5;
+      }
+      state.floorAdvanceTimer -= dt;
+      if (state.floorAdvanceTimer <= 0) {
+        state.phase = 'playing';
+        state.floorAdvanceTimer = null;
+      }
+    }
+
     if (state.phase === 'playing') {
       updateJoystickInput();
       updateEntities(state, dt);
@@ -356,6 +369,7 @@ function gameLoop(timestamp) {
       if (state.cacheSelection == null) state.cacheSelection = 'pistol';
       renderCachePrompt(ctx, state, state.mouse, state.cacheSelection);
     }
+    if (state.phase === 'floorAdvance') renderFloorTransition(ctx, state);
     if (state.phase === 'victory')  renderVictory(ctx, state);
     if (state.phase === 'gameOver') renderGameOver(ctx, state);
   }
@@ -398,15 +412,17 @@ async function startGame(settings) {
           const caches      = mapData.cachePositions.map((p, i) => createCache(p.x, p.y, i));
           const exit        = createExit(mapData.exitPos.x, mapData.exitPos.y);
           const healthPacks = mapData.healthPackPositions.map(p => createHealthPack(p.x, p.y, p.size));
+          const altars      = (mapData.altarPositions || []).map(p => createAltar(p.x, p.y, p.godId));
           const explored    = new Uint8Array(mapData.w * mapData.h);
 
           state = {
             phase: 'playing', victoryType: null,
-            cells: mapData.cells,           // shortcut used by raycaster/entities
+            cells: mapData.cells,
             map: { cells: mapData.cells, w: mapData.w, h: mapData.h, rooms: mapData.rooms },
-            player, enemies, minions: [], caches, exit, healthPacks, explored,
+            player, enemies, minions: [], caches, exit, healthPacks, altars, explored,
             settings, pendingCacheIdx: null, keys: {}, mouse: null,
             effects: [], wave: 1, waveMessage: null,
+            floor: 1, exitOpen: false, nearAltar: null,
           };
 
           fill.style.width = '100%';
@@ -428,5 +444,29 @@ async function startGame(settings) {
       console.error(err);
     }
   }));
+}
+
+function generateNextFloor(state) {
+  const mapData = generateMap(state.settings.mapSize, state.settings.numEnemies);
+  const p = state.player;
+  p.x = mapData.startPos.x;
+  p.y = mapData.startPos.y;
+  p.angle = mapData.startPos.angle || 0;
+  p.fireTimer = 0;
+  state.cells     = mapData.cells;
+  state.map       = { cells: mapData.cells, w: mapData.w, h: mapData.h, rooms: mapData.rooms };
+  state.explored  = new Uint8Array(mapData.w * mapData.h);
+  state.enemies   = mapData.enemyPositions.map((pos, i) => createEnemy(pos.x, pos.y, i));
+  state.caches    = mapData.cachePositions.map((pos, i) => createCache(pos.x, pos.y, i));
+  state.exit      = createExit(mapData.exitPos.x, mapData.exitPos.y);
+  state.healthPacks = mapData.healthPackPositions.map(pos => createHealthPack(pos.x, pos.y, pos.size));
+  state.altars    = (mapData.altarPositions || []).map(pos => createAltar(pos.x, pos.y, pos.godId));
+  state.minions   = [];
+  state.effects   = [];
+  state.wave      = 1;
+  state.exitOpen  = false;
+  state.nearAltar = null;
+  const floorSubs = { 2: 'THE LABYRINTH DEEPENS', 3: 'THE REALM OF THE DEAD AWAITS' };
+  state.waveMessage = { text: `FLOOR  ${state.floor}`, subtitle: floorSubs[state.floor] || '', timer: 3.5 };
 }
 
