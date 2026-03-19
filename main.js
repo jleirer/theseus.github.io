@@ -424,7 +424,7 @@ async function startGame(settings) {
             player, enemies, minions: [], caches, exit, healthPacks, altars, explored,
             settings, pendingCacheIdx: null, keys: {}, mouse: null,
             effects: [], wave: 1, waveMessage: null,
-            floor: 1, exitOpen: false, nearAltar: null,
+            floor: 1, exitOpen: false, nearAltar: null, defeatedBosses: [],
           };
 
           fill.style.width = '100%';

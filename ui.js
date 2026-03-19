@@ -719,7 +719,8 @@ export function renderBossHealthBar(ctx, boss) {
   ctx.fillStyle = '#ffcc00';
   ctx.font = 'bold 12px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('⚡ NERO — EMPEROR OF ROME ⚡', SCREEN_W / 2, by - 4);
+  const bossLabel = boss.bossName ? `⚡ ${boss.bossName} ⚡` : '⚡ BOSS ⚡';
+  ctx.fillText(bossLabel, SCREEN_W / 2, by - 4);
   ctx.fillStyle = '#1a0000';
   ctx.fillRect(bx, by, barW, barH);
   const barCol = frac > 0.6 ? '#cc9900' : frac > 0.3 ? '#dd4400' : '#cc0000';
@@ -738,12 +739,12 @@ export function renderBossHealthBar(ctx, boss) {
 // ─── Victory / Game Over ──────────────────────────────────────────────────────
 
 const VICTORY_MSGS = {
-  domination: { title: 'NERO IS DEAD', sub: 'The Emperor has fallen. Rome will never forget.', color: '#ffcc00' },
+  domination: { title: 'HADES IS VANQUISHED', sub: 'The God of the Dead has been cast back to the underworld.', color: '#ccaaff' },
   escape:      { title: 'THESEUS ESCAPES', sub: 'You fled the labyrinth and lived to tell it.', color: '#00ff88' },
 };
 
 // Shared bounds for the "MAIN MENU" button on end screens
-export const MENU_BTN = { x: SCREEN_W / 2 - 100, y: SCREEN_H / 2 + 110, w: 200, h: 40 };
+export const MENU_BTN = { x: SCREEN_W / 2 - 100, y: SCREEN_H / 2 + 132, w: 200, h: 40 };
 
 export function hitTestMenuButton(mx, my) {
   return mx >= MENU_BTN.x && mx <= MENU_BTN.x + MENU_BTN.w &&
@@ -776,11 +777,18 @@ export function renderVictory(ctx, state) {
   ctx.font = '22px monospace';
   ctx.fillText(info.sub, SCREEN_W / 2, SCREEN_H / 2 + 10);
 
+  // List defeated bosses
+  const defeated = state.defeatedBosses || [];
+  if (defeated.length > 0) {
+    ctx.fillStyle = '#ffaa44';
+    ctx.font = '14px monospace';
+    ctx.fillText(`Bosses slain: ${defeated.join('  ·  ')}`, SCREEN_W / 2, SCREEN_H / 2 + 48);
+  }
+
   ctx.fillStyle = '#888';
   ctx.font = '16px monospace';
-  ctx.fillText(`Minotaurs slain: ${state.player.kills}`,
-    SCREEN_W / 2, SCREEN_H / 2 + 50);
-  ctx.fillText('R — enter the labyrinth again  ·  Enter — main menu', SCREEN_W / 2, SCREEN_H / 2 + 85);
+  ctx.fillText(`Enemies slain: ${state.player.kills}`, SCREEN_W / 2, SCREEN_H / 2 + 75);
+  ctx.fillText('R — enter the labyrinth again  ·  Enter — main menu', SCREEN_W / 2, SCREEN_H / 2 + 108);
   ctx.textAlign = 'left';
   drawMenuButton(ctx);
 }
@@ -821,18 +829,27 @@ export function renderFloorTransition(ctx, state) {
   const floor = state.floor || 1;
   const timer = state.floorAdvanceTimer ?? 2.5;
   const alpha = timer <= 0.5 ? timer / 0.5 : 1;
-  const subtitles = { 2: 'THE LABYRINTH DEEPENS', 3: 'THE REALM OF THE DEAD AWAITS' };
+  const defeated = state.defeatedBosses || [];
+  // The boss slain to reach this floor is the last entry in defeatedBosses
+  const slain = defeated[defeated.length - 1];
+  const slainLine = slain ? `${slain} HAS FALLEN` : '';
+  const subtitles = { 2: 'NERO AWAITS IN THE DEPTHS', 3: 'HADES STIRS BELOW' };
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
   ctx.textAlign = 'center';
+  if (slainLine) {
+    ctx.fillStyle = '#ff4422';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText(slainLine, SCREEN_W / 2, SCREEN_H / 2 - 56);
+  }
   ctx.fillStyle = '#ccaaff';
   ctx.font = 'bold 52px monospace';
-  ctx.fillText(`FLOOR  ${floor}`, SCREEN_W / 2, SCREEN_H / 2 - 20);
+  ctx.fillText(`FLOOR  ${floor}`, SCREEN_W / 2, SCREEN_H / 2 - 10);
   ctx.fillStyle = '#998866';
   ctx.font = '18px monospace';
-  ctx.fillText(subtitles[floor] || '', SCREEN_W / 2, SCREEN_H / 2 + 20);
+  ctx.fillText(subtitles[floor] || '', SCREEN_W / 2, SCREEN_H / 2 + 28);
   ctx.textAlign = 'left';
   ctx.restore();
 }

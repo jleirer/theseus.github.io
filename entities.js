@@ -238,6 +238,7 @@ function damageEnemy(enemy, dmg, state) {
     if (enemy.isBoss) {
       state.healthPacks.push(createHealthPack(enemy.x, enemy.y, 'large'));
       state.exitOpen = true;
+      if (enemy.bossName) (state.defeatedBosses = state.defeatedBosses || []).push(enemy.bossName);
     } else if (Math.random() < 0.3) {
       state.healthPacks.push(createHealthPack(enemy.x, enemy.y, 'small'));
     }
@@ -261,16 +262,19 @@ function spawnBoss(state) {
   state.wave = 3;
   const floor = state.floor || 1;
 
-  let bossHealth, bossSpriteId, bossDamageMult, bossSpeedMult, bossScale, bossText, bossSub;
+  let bossHealth, bossSpriteId, bossDamageMult, bossSpeedMult, bossScale, bossText, bossSub, bossName;
   if (floor === 1) {
     bossHealth = 400; bossSpriteId = 9; bossDamageMult = 2.0; bossSpeedMult = 1.4; bossScale = 1.35;
     bossText = 'THE MEGA-TAUR RISES'; bossSub = 'A BEAST WITHOUT EQUAL';
+    bossName = 'MEGA-TAUR';
   } else if (floor === 2) {
     bossHealth = 600; bossSpriteId = 8; bossDamageMult = 3.0; bossSpeedMult = 1.2; bossScale = 1.0;
     bossText = 'NERO DESCENDS UPON YOU'; bossSub = 'THE EMPEROR OF ROME HAS COME TO FINISH YOU';
+    bossName = 'NERO';
   } else {
     bossHealth = 900; bossSpriteId = 10; bossDamageMult = 4.0; bossSpeedMult = 1.5; bossScale = 1.5;
     bossText = 'HADES WALKS AMONG THE LIVING'; bossSub = 'THE GOD OF THE DEAD CLAIMS HIS DOMAIN';
+    bossName = 'HADES';
   }
   state.waveMessage = { text: bossText, subtitle: bossSub, timer: 4.0, isBoss: true };
 
@@ -290,6 +294,7 @@ function spawnBoss(state) {
   boss.damageMult = bossDamageMult;
   boss.spriteId  = bossSpriteId;
   boss.spriteScale = bossScale;
+  boss.bossName  = bossName;
   boss.isBoss    = true;
   boss.aiState   = 'chase';
   boss.lastKnownPX = px;
