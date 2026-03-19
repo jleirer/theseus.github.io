@@ -54,14 +54,21 @@ export async function loadAssets() {
     });
   }
 
-  const [s0,s1,s2,s3,s4,s5,s6,s7,s8,w1,w2] = await Promise.all([
+  const WEAPON_KEYS = ['pistol','shotgun','smg','rocket','plasma','bfg','railgun'];
+
+  const [s0,s1,s2,s3,s4,s5,s6,s7,s8,w1,w2,...weaponImgs] = await Promise.all([
     loadImg('Images/Sprite0.png'), loadImg('Images/Sprite1.png'),
     loadImg('Images/Sprite2.png'), loadImg('Images/Sprite3.png'),
     loadImg('Images/Sprite4.png'), loadImg('Images/Sprite5.png'),
     loadImg('Images/Sprite6.png'), loadImg('Images/Sprite7.png'),
     loadImg('Images/Sprite8.png'),
     loadImg('Images/Wall1.png'),   loadImg('Images/Wall2.png'),
+    ...WEAPON_KEYS.map(k => loadImg(`Images/Weapon_${k}.png`).catch(() => null)),
   ]);
+
+  for (let i = 0; i < WEAPON_KEYS.length; i++) {
+    if (weaponImgs[i]) WEAPON_IMGS[WEAPON_KEYS[i]] = weaponImgs[i];
+  }
 
   SPRITES.length = 0;
   SPRITES.push(
@@ -132,6 +139,7 @@ export async function loadAssets() {
 
 const TEXTURES = [];  // Uint32Array[TEX*TEX] each
 const SPRITES  = [];  // Uint32Array[TEX*TEX] each, 0 = transparent
+export const WEAPON_IMGS = {};  // weaponId → HTMLImageElement (populated by loadAssets)
 
 function pack(r, g, b) { return (0xFF << 24) | (b << 16) | (g << 8) | r; }
 

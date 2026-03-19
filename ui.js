@@ -2,6 +2,7 @@
 import { SCREEN_W, SCREEN_H, HALF_W, HALF_H, FOV_TAN, WEAPONS, TECH_PREREQS, TECH_NODE_POS, MINION_STATS, ALTAR_GODS } from './constants.js';
 import { weaponNodeState } from './weapons.js';
 import { hasLOS } from './pathfinding.js';
+import { WEAPON_IMGS } from './raycaster.js';
 
 const NODE_W = 120, NODE_H = 48;
 // Overlay base offset (centered 700×500 box)
@@ -116,6 +117,17 @@ export function renderHUD(ctx, state) {
 // Simple weapon sprite at bottom-center
 function drawWeaponSprite(ctx, weaponId, state) {
   const bob = state.player.isMoving ? Math.sin(state.player.bobTimer) * 9 : 0;
+
+  const img = WEAPON_IMGS[weaponId];
+  if (img) {
+    const w = 240, h = 200;
+    const x = SCREEN_W / 2 - w / 2 + bob * 0.5;
+    const y = SCREEN_H - h + Math.abs(bob);
+    ctx.drawImage(img, x, y, w, h);
+    return;
+  }
+
+  // Fallback: procedural drawing (used until PNG is placed in Images/)
   const wx  = SCREEN_W / 2 + bob * 0.5;
   const wy  = SCREEN_H - 100 + Math.abs(bob);
 
