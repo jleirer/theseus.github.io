@@ -7,7 +7,7 @@ import { renderHUD, renderCrosshair, renderMinimap,
          renderVictory, renderGameOver,
          renderClickToPlay, renderEffects, renderEnemyHealthBars,
          renderWaveMessage, renderBossHealthBar, hitTestMenuButton, renderFloorTransition,
-         renderProjectiles } from './ui.js';
+         renderProjectiles, renderPauseOverlay } from './ui.js';
 import {
   createPlayer, createEnemy, createMinion, createCache, createExit, createHealthPack, createAltar,
   updateEntities, updateExploration, checkInteractions, shootPlayer, spawnMinion,
@@ -52,6 +52,16 @@ document.addEventListener('keydown', (e) => {
     }
   }
 
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    if (state.phase === 'playing' || state.phase === 'paused') {
+      e.preventDefault();
+      togglePause();
+      return;
+    }
+  }
+
+  if (state.phase === 'paused') return;
+
   // Weapon switch 1–7
   if (e.code.startsWith('Digit')) {
     const idx = parseInt(e.code.replace('Digit', '')) - 1;
@@ -90,6 +100,10 @@ document.addEventListener('keyup',  (e) => { if (state) state.keys[e.code] = fal
 const isTouchDevice = navigator.maxTouchPoints > 0;
 canvas.addEventListener('click', () => {
   unlockAudio().catch(() => {});
+  if (state?.phase === 'paused') {
+    togglePause(true);
+    return;
+  }
   if (!isTouchDevice && state?.phase === 'playing') canvas.requestPointerLock();
 });
 
@@ -118,6 +132,10 @@ document.addEventListener('mousemove', (e) => {
 document.addEventListener('mousedown', (e) => {
   unlockAudio().catch(() => {});
   if (!state) return;
+  if (e.button === 0 && state.phase === 'paused') {
+    togglePause(true);
+    return;
+  }
   if (e.button === 0 && document.pointerLockElement === canvas && state.phase === 'playing') {
     shootPlayer(state);
   }
@@ -135,6 +153,10 @@ document.addEventListener('mousedown', (e) => {
 // Keyboard shoot (Space)
 document.addEventListener('keydown', (e) => {
   unlockAudio().catch(() => {});
+  if (state?.phase === 'paused' && e.code === 'Space') {
+    e.preventDefault();
+    return;
+  }
   if (state?.phase === 'playing' && e.code === 'Space') shootPlayer(state);
 });
 
@@ -209,6 +231,11 @@ canvas.addEventListener('touchstart', (e) => {
     return;
   }
 
+  if (state.phase === 'paused') {
+    togglePause(true);
+    return;
+  }
+
   if (state.phase !== 'playing') return;
   const r = canvas.getBoundingClientRect();
   for (const t of e.changedTouches) {
@@ -272,6 +299,35 @@ function updateJoystickInput() {
   i.back    = dy >  dead;
   i.strafeL = dx < -dead;
   i.strafeR = dx >  dead;
+}
+
+function clearHeldInputs() {
+  if (!state?.player) return;
+  state.keys = {};
+  const i = state.player.input;
+  i.forward = false;
+  i.back = false;
+  i.strafeL = false;
+  i.strafeR = false;
+  i.mouseDX = 0;
+  clearInterval(fireInterval);
+  clearJoystick();
+  lookTouch = null;
+}
+
+function togglePause(forcePlaying = null) {
+  if (!state) return;
+  if (state.phase !== 'playing' && state.phase !== 'paused') return;
+  const resume = forcePlaying == null ? state.phase === 'paused' : !!forcePlaying;
+  if (resume) {
+    state.phase = 'playing';
+    lastTime = performance.now();
+    if (!isTouchDevice) canvas.requestPointerLock().catch(() => {});
+    return;
+  }
+  clearHeldInputs();
+  state.phase = 'paused';
+  if (document.pointerLockElement === canvas) document.exitPointerLock();
 }
 
 // Arrow-key navigation map for the tech tree + minion buttons
@@ -353,6 +409,7 @@ function handleCacheKeyboard() {
 // Player input binding
 document.addEventListener('keydown', (e) => {
   if (!state?.player) return;
+  if (state.phase !== 'playing') return;
   const i = state.player.input;
   if (e.code === 'KeyW' || e.code === 'ArrowUp')    i.forward  = true;
   if (e.code === 'KeyS' || e.code === 'ArrowDown')  i.back     = true;
@@ -361,6 +418,7 @@ document.addEventListener('keydown', (e) => {
 });
 document.addEventListener('keyup', (e) => {
   if (!state?.player) return;
+  if (state.phase !== 'playing' && state.phase !== 'paused') return;
   const i = state.player.input;
   if (e.code === 'KeyW' || e.code === 'ArrowUp')    i.forward  = false;
   if (e.code === 'KeyS' || e.code === 'ArrowDown')  i.back     = false;
@@ -427,7 +485,7 @@ function gameLoop(timestamp) {
     renderScene(ctx, state);
     if (state.phase === 'playing') renderProjectiles(ctx, state);
 
-    if (state.phase === 'playing' || state.phase === 'cachePrompt') {
+    if (state.phase === 'playing' || state.phase === 'cachePrompt' || state.phase === 'paused') {
       renderCrosshair(ctx);
       renderMinimap(ctx, state);
       renderHUD(ctx, state);
@@ -440,6 +498,7 @@ function gameLoop(timestamp) {
     if (state.phase === 'playing' && !isTouchDevice && document.pointerLockElement !== canvas) {
       renderClickToPlay(ctx);
     }
+    if (state.phase === 'paused') renderPauseOverlay(ctx);
     if (state.phase === 'cachePrompt') {
       if (state.cacheSelection == null) state.cacheSelection = getDefaultCacheSelection();
       renderCachePrompt(ctx, state, state.mouse, state.cacheSelection);

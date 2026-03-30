@@ -1025,3 +1025,25 @@ export function renderFloorTransition(ctx, state) {
   ctx.textAlign = 'left';
   ctx.restore();
 }
+
+export function renderPauseOverlay(ctx) {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+
+  ctx.fillStyle = 'rgba(0,18,0,0.92)';
+  ctx.strokeStyle = '#00ff44';
+  ctx.lineWidth = 2;
+  ctx.fillRect(SCREEN_W / 2 - 200, SCREEN_H / 2 - 90, 400, 180);
+  ctx.strokeRect(SCREEN_W / 2 - 200, SCREEN_H / 2 - 90, 400, 180);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#00ff44';
+  ctx.font = 'bold 40px monospace';
+  ctx.fillText('PAUSED', SCREEN_W / 2, SCREEN_H / 2 - 24);
+
+  ctx.fillStyle = '#99cc99';
+  ctx.font = '16px monospace';
+  ctx.fillText('P or Esc to resume', SCREEN_W / 2, SCREEN_H / 2 + 14);
+  ctx.fillText('M toggles audio while paused', SCREEN_W / 2, SCREEN_H / 2 + 40);
+  ctx.textAlign = 'left';
+}
