@@ -112,6 +112,10 @@ export const WEAPON_IMGS = {};  // weaponId → HTMLImageElement (populated by l
 
 function pack(r, g, b) { return (0xFF << 24) | (b << 16) | (g << 8) | r; }
 
+function tintChannel(base, tint, amount) {
+  return Math.min(255, Math.max(0, (base * (1 - amount) + tint * amount) | 0));
+}
+
 // ─── Shade / distance fog ─────────────────────────────────────────────────────
 
 function shadeColor(color, dist, sideY) {
@@ -238,6 +242,12 @@ export function renderScene(ctx, state) {
         let r = ((raw & 0xFF) * shade) | 0;
         let g = (((raw >> 8) & 0xFF) * shade) | 0;
         let b = (((raw >> 16) & 0xFF) * shade) | 0;
+        if (spr.tint) {
+          const amt = spr.tintAmount || 0.22;
+          r = tintChannel(r, spr.tint[0], amt);
+          g = tintChannel(g, spr.tint[1], amt);
+          b = tintChannel(b, spr.tint[2], amt);
+        }
         if (bloodFrac > 0) {
           r = Math.min(255, r + ((190 * bf2) | 0));
           g = Math.max(0, (g * (1 - bloodFrac * 0.65)) | 0);
@@ -261,35 +271,42 @@ function collectSprites(state) {
   const sprites = [];
 
   for (const e of state.enemies) {
+    const dx = e.x - player.x, dy = e.y - player.y;
     if (e.dead) continue;
     sprites.push({ x: e.x, y: e.y, spriteId: e.spriteId,
-      dist2: Math.hypot(e.x - player.x, e.y - player.y),
+      dist2: dx*dx + dy*dy,
       hitTimer: e.hitTimer, health: e.health, maxHealth: e.maxHealth,
-      spriteScale: e.spriteScale || 1, spriteScaleX: e.spriteScaleX });
+      spriteScale: e.spriteScale || 1, spriteScaleX: e.spriteScaleX,
+      tint: e.variantTint, tintAmount: e.isBoss ? 0 : 0.24 });
   }
   for (const m of state.minions) {
+    const dx = m.x - player.x, dy = m.y - player.y;
     if (m.dead) continue;
     sprites.push({ x: m.x, y: m.y, spriteId: m.spriteId,
-      dist2: Math.hypot(m.x - player.x, m.y - player.y) });
+      dist2: dx*dx + dy*dy });
   }
   for (const c of state.caches) {
+    const dx = c.x - player.x, dy = c.y - player.y;
     if (c.found) continue;
     sprites.push({ x: c.x, y: c.y, spriteId: 1,
-      dist2: Math.hypot(c.x - player.x, c.y - player.y) });
+      dist2: dx*dx + dy*dy });
   }
   if (state.exit) {
+    const dx = state.exit.x - player.x, dy = state.exit.y - player.y;
     sprites.push({ x: state.exit.x, y: state.exit.y, spriteId: 2,
-      dist2: Math.hypot(state.exit.x - player.x, state.exit.y - player.y) });
+      dist2: dx*dx + dy*dy });
   }
   for (const hp of (state.healthPacks || [])) {
+    const dx = hp.x - player.x, dy = hp.y - player.y;
     if (hp.collected) continue;
     sprites.push({ x: hp.x, y: hp.y, spriteId: hp.spriteId,
-      dist2: Math.hypot(hp.x - player.x, hp.y - player.y) });
+      dist2: dx*dx + dy*dy });
   }
   for (const altar of (state.altars || [])) {
+    const dx = altar.x - player.x, dy = altar.y - player.y;
     if (altar.used) continue;
     sprites.push({ x: altar.x, y: altar.y, spriteId: 11,
-      dist2: Math.hypot(altar.x - player.x, altar.y - player.y) });
+      dist2: dx*dx + dy*dy });
   }
   return sprites;
 }

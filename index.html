@@ -22,6 +22,7 @@
 
     .setting { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
     .setting label { color: #0a0; font-size: 13px; letter-spacing: 2px; }
+    .setting small { color: #070; }
 
     .btn-group { display: flex; gap: 8px; }
     .btn-group button {
@@ -117,11 +118,22 @@
     </div>
   </div>
 
+  <div class="setting">
+    <label>AUDIO</label>
+    <div class="btn-group" id="audio-group">
+      <button data-audio="on" class="active">ON</button>
+      <button data-audio="off">OFF</button>
+    </div>
+    <small>Press <span>M</span> in-game to toggle quickly.</small>
+  </div>
+
   <button id="start-btn">ENTER THE LABYRINTH</button>
 
   <div class="controls">
     <span>WASD</span> — Move &nbsp;|&nbsp; <span>Mouse</span> — Look &nbsp;|&nbsp; <span>Click / Space</span> — Shoot<br>
-    <span>E</span> — Use exit &nbsp;|&nbsp; <span>1–7</span> — Switch weapon &nbsp;|&nbsp; <span>R</span> — Restart<br><br>
+    <span>E</span> — Use exit &nbsp;|&nbsp; <span>1–7</span> — Switch weapon &nbsp;|&nbsp; <span>M</span> — Mute &nbsp;|&nbsp; <span>R</span> — Restart<br><br>
+    AUDIO:<br>
+    Synthesized weapon fire, impacts, pickups, waves, and boss stingers activate after your first click/tap.<br><br>
     WIN CONDITIONS:<br>
     ⚔ <span>Domination</span> — slay all minotaurs &nbsp;|&nbsp;
     ⬡ <span>Escape</span> — flee the labyrinth
@@ -145,6 +157,7 @@
 <script>
   // Setup UI logic (runs before ES module)
   let selectedSize = 'medium';
+  let selectedAudio = 'on';
 
   document.querySelectorAll('#size-group button').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -157,6 +170,23 @@
   const slider = document.getElementById('enemy-count');
   const display = document.getElementById('enemy-display');
   slider.addEventListener('input', () => display.textContent = slider.value);
+
+  try {
+    selectedAudio = localStorage.getItem('theseus-audio-enabled') === '0' ? 'off' : 'on';
+  } catch {}
+
+  document.querySelectorAll('#audio-group button').forEach(btn => {
+    if (btn.dataset.audio === selectedAudio) btn.classList.add('active');
+    else btn.classList.remove('active');
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#audio-group button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedAudio = btn.dataset.audio;
+      try {
+        localStorage.setItem('theseus-audio-enabled', selectedAudio === 'on' ? '1' : '0');
+      } catch {}
+    });
+  });
 
   document.getElementById('start-btn').addEventListener('click', () => {
     window.startGame({ mapSize: selectedSize, numEnemies: parseInt(slider.value) });

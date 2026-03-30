@@ -1,6 +1,6 @@
 // ui.js — HUD, minimap, overlays
 import { SCREEN_W, SCREEN_H, HALF_W, HALF_H, FOV_TAN, WEAPONS, TECH_PREREQS, TECH_NODE_POS, MINION_STATS, ALTAR_GODS } from './constants.js';
-import { weaponNodeState } from './weapons.js';
+import { weaponNodeState, canUpgradeWeapon, getPlayerWeaponStats, isTechTreeMaxed } from './weapons.js';
 import { hasLOS } from './pathfinding.js';
 import { WEAPON_IMGS } from './raycaster.js';
 
@@ -27,6 +27,7 @@ export function renderCrosshair(ctx) {
 
 export function renderHUD(ctx, state) {
   const { player, enemies } = state;
+  const activeWeapon = getPlayerWeaponStats(player, player.activeWeapon);
 
   // --- Bottom-right: health ---
   const bx = SCREEN_W - 215, by = SCREEN_H - 48;
@@ -47,14 +48,29 @@ export function renderHUD(ctx, state) {
   ctx.font = 'bold 11px monospace';
   ctx.fillText(`HP  ${hp}/${player.maxHealth}`, bx + 4, by + 13);
 
+  const armor = Math.max(0, player.armor || 0);
+  const armorFrac = armor / (player.maxArmor || 100);
+  ctx.fillStyle = '#223';
+  ctx.fillRect(bx, by - 20, 200, 12);
+  ctx.fillStyle = '#66bbff';
+  ctx.fillRect(bx, by - 20, 200 * armorFrac, 12);
+  ctx.strokeStyle = '#577';
+  ctx.strokeRect(bx, by - 20, 200, 12);
+  ctx.fillStyle = '#d8eeff';
+  ctx.font = 'bold 10px monospace';
+  ctx.fillText(`AR  ${armor}/${player.maxArmor || 100}`, bx + 4, by - 10);
+
   // --- Bottom-center: weapon ---
-  const wname = WEAPONS[player.activeWeapon]?.name || '';
+  const wname = activeWeapon?.name || '';
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.fillRect(SCREEN_W/2 - 90, SCREEN_H - 34, 180, 26);
+  ctx.fillRect(SCREEN_W/2 - 110, SCREEN_H - 46, 220, 38);
   ctx.fillStyle = '#ffee88';
   ctx.font = 'bold 13px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText(`[ ${wname} ]`, SCREEN_W / 2, SCREEN_H - 16);
+  ctx.fillText(`[ ${wname} ]`, SCREEN_W / 2, SCREEN_H - 28);
+  ctx.fillStyle = '#aaa';
+  ctx.font = '9px monospace';
+  ctx.fillText(`DMG ${activeWeapon.damage}   FR ${activeWeapon.fireRate.toFixed(2)}/s   UPG ${activeWeapon.upgradeLevel}`, SCREEN_W / 2, SCREEN_H - 15);
   ctx.textAlign = 'left';
 
   drawWeaponSprite(ctx, player.activeWeapon, state);
@@ -78,7 +94,7 @@ export function renderHUD(ctx, state) {
 
   // --- Top bar ---
   const totalEnemies = enemies.length;
-  const deadEnemies  = enemies.filter(e => e.dead).length;
+  const deadEnemies  = state.deadEnemyCount ?? enemies.filter(e => e.dead).length;
 
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.fillRect(0, 0, SCREEN_W, 28);
@@ -109,9 +125,15 @@ export function renderHUD(ctx, state) {
   );
 
   // Minion count
-  const aliveMins = state.minions.filter(m => !m.dead).length;
+  const aliveMins = state.aliveMinionCount ?? state.minions.filter(m => !m.dead).length;
   ctx.fillStyle = '#aaddff';
   ctx.fillText(`◉ ALLIES: ${aliveMins}`, 430, 18);
+
+  const eliteCount = enemies.filter(e => !e.dead && e.isElite).length;
+  if (eliteCount > 0) {
+    ctx.fillStyle = '#ffe082';
+    ctx.fillText(`✦ ELITES: ${eliteCount}`, 540, 18);
+  }
 }
 
 // Simple weapon sprite at bottom-center
@@ -363,10 +385,17 @@ export function renderMinimap(ctx, state) {
   for (const e of enemies) {
     if (e.dead) continue;
     if (explored[Math.floor(e.y) * map.w + Math.floor(e.x)]) {
-      ctx.fillStyle = '#ff3333';
+      ctx.fillStyle = VARIANT_BAR_COLORS[e.variant] || '#ff3333';
       ctx.beginPath();
       ctx.arc(mx + e.x * scale, my + e.y * scale, Math.max(2, scale), 0, Math.PI * 2);
       ctx.fill();
+      if (e.isElite) {
+        ctx.strokeStyle = '#fff2a8';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(mx + e.x * scale, my + e.y * scale, Math.max(3, scale + 1), 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
   }
 
@@ -390,6 +419,23 @@ export function renderMinimap(ctx, state) {
   ctx.moveTo(7, 0); ctx.lineTo(-5, -3); ctx.lineTo(-5, 3);
   ctx.closePath(); ctx.fill();
   ctx.restore();
+
+  // Minimap legend
+  const legendX = mx;
+  const legendY = my - 30;
+  if (legendY > 8) {
+    ctx.fillStyle = 'rgba(0,0,0,0.68)';
+    ctx.fillRect(legendX - 2, legendY - 12, 166, 20);
+    ctx.font = '9px monospace';
+    ctx.fillStyle = VARIANT_BAR_COLORS.raider;
+    ctx.fillText('R', legendX + 2, legendY);
+    ctx.fillStyle = VARIANT_BAR_COLORS.charger;
+    ctx.fillText('C', legendX + 18, legendY);
+    ctx.fillStyle = VARIANT_BAR_COLORS.sentinel;
+    ctx.fillText('S', legendX + 34, legendY);
+    ctx.fillStyle = '#fff2a8';
+    ctx.fillText('◌ ELITE', legendX + 52, legendY);
+  }
 }
 
 // ─── Cache prompt ─────────────────────────────────────────────────────────────
@@ -404,16 +450,17 @@ export function hitTestCachePrompt(cx, cy, state) {
     const ny = OVL_Y + pos.y - NODE_H / 2;
     if (cx >= nx && cx <= nx + NODE_W && cy >= ny && cy <= ny + NODE_H) {
       if (weaponNodeState(id, owned) === 'available') return { type: 'weapon', id };
+      if (canUpgradeWeapon(state.player, id)) return { type: 'weaponUpgrade', id };
     }
   }
 
-  // Minion buttons
-  const minionTypes = ['scout', 'guard', 'hunter'];
+  // Reward buttons
+  const rewardTypes = ['scout', 'guard', 'hunter', 'armor'];
   const mBY = OVL_Y + 415;
-  for (let i = 0; i < 3; i++) {
-    const bx = OVL_X + 70 + i * 195;
-    if (cx >= bx && cx <= bx + 170 && cy >= mBY && cy <= mBY + 70) {
-      return { type: 'minion', id: minionTypes[i] };
+  for (let i = 0; i < 4; i++) {
+    const bx = OVL_X + 28 + i * 166;
+    if (cx >= bx && cx <= bx + 150 && cy >= mBY && cy <= mBY + 70) {
+      return rewardTypes[i] === 'armor' ? { type: 'armor' } : { type: 'minion', id: rewardTypes[i] };
     }
   }
   return null;
@@ -437,7 +484,7 @@ export function renderCachePrompt(ctx, state, mouse, keyboardSel) {
 
   ctx.fillStyle = '#666';
   ctx.font = '12px monospace';
-  ctx.fillText('WEAPON TECH TREE', SCREEN_W / 2, OVL_Y + 34);
+  ctx.fillText(isTechTreeMaxed(state.player.weapons) ? 'WEAPON TECH TREE  ·  UPGRADES ONLINE' : 'WEAPON TECH TREE', SCREEN_W / 2, OVL_Y + 34);
   ctx.textAlign = 'left';
 
   const owned = state.player.weapons;
@@ -460,14 +507,16 @@ export function renderCachePrompt(ctx, state, mouse, keyboardSel) {
 
   // Draw weapon nodes
   for (const [id, pos] of Object.entries(TECH_NODE_POS)) {
-    const ns  = weaponNodeState(id, owned);
+    const ns0 = weaponNodeState(id, owned);
+    const ns  = ns0 === 'owned' && canUpgradeWeapon(state.player, id) ? 'upgrade' : ns0;
     const nx  = OVL_X + pos.x - NODE_W / 2;
     const ny  = OVL_Y + pos.y - NODE_H / 2;
-    const hov = mouse && mx_in(mouse, nx, ny, NODE_W, NODE_H) && ns === 'available';
+    const hov = mouse && mx_in(mouse, nx, ny, NODE_W, NODE_H) && (ns === 'available' || ns === 'upgrade');
     const ksel = keyboardSel === id;
 
     ctx.save();
     if (ns === 'owned')          { ctx.fillStyle = '#0d2e12'; ctx.strokeStyle = '#00cc44'; }
+    else if (ns === 'upgrade')   { ctx.fillStyle = hov || ksel ? '#14220a' : '#101a08'; ctx.strokeStyle = hov || ksel ? '#8dff6a' : '#55cc44'; }
     else if (ns === 'available') { ctx.fillStyle = hov || ksel ? '#3a3a00' : '#222200'; ctx.strokeStyle = hov || ksel ? '#ffff66' : '#dddd00'; }
     else                         { ctx.fillStyle = ksel ? '#1a1400' : '#111'; ctx.strokeStyle = ksel ? '#886600' : '#333'; }
 
@@ -479,8 +528,8 @@ export function renderCachePrompt(ctx, state, mouse, keyboardSel) {
     ctx.strokeRect(nx, ny, NODE_W, NODE_H);
     ctx.shadowBlur = 0;
 
-    const w = WEAPONS[id];
-    ctx.fillStyle = ns === 'locked' ? '#555' : ns === 'owned' ? '#00cc44' : '#ffee44';
+    const w = getPlayerWeaponStats(state.player, id);
+    ctx.fillStyle = ns === 'locked' ? '#555' : ns === 'owned' ? '#00cc44' : ns === 'upgrade' ? '#8dff6a' : '#ffee44';
     ctx.font = `bold 11px monospace`;
     ctx.textAlign = 'center';
     ctx.fillText(w.name, OVL_X + pos.x, ny + 18);
@@ -488,6 +537,7 @@ export function renderCachePrompt(ctx, state, mouse, keyboardSel) {
     ctx.font = '9px monospace';
     ctx.fillText(`DMG:${w.damage}  ${w.fireRate}/s`, OVL_X + pos.x, ny + 34);
     if (ns === 'owned')      ctx.fillText('✓ OWNED',     OVL_X + pos.x, ny + 44);
+    else if (ns === 'upgrade') ctx.fillText(`▲ UPG ${w.upgradeLevel}`, OVL_X + pos.x, ny + 44);
     else if (ns === 'locked') ctx.fillText('🔒 LOCKED',   OVL_X + pos.x, ny + 44);
     ctx.restore();
     ctx.textAlign = 'left';
@@ -503,37 +553,47 @@ export function renderCachePrompt(ctx, state, mouse, keyboardSel) {
   ctx.fillStyle = '#666';
   ctx.font = '12px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('— OR SPAWN A MINION —', SCREEN_W / 2, OVL_Y + 408);
+  ctx.fillText('— OR REINFORCE YOURSELF —', SCREEN_W / 2, OVL_Y + 408);
   ctx.textAlign = 'left';
 
-  // Minion buttons
+  // Reward buttons
   const mBY = OVL_Y + 415;
-  const mTypes = ['scout', 'guard', 'hunter'];
-  for (let i = 0; i < 3; i++) {
-    const bx  = OVL_X + 70 + i * 195;
-    const st  = MINION_STATS[mTypes[i]];
-    const hov  = mouse && mx_in(mouse, bx, mBY, 170, 70);
-    const ksel = keyboardSel === `minion${i}`;
-    const [cr, cg, cb] = st.color;
+  const rewardIds = ['scout', 'guard', 'hunter', 'armor'];
+  for (let i = 0; i < 4; i++) {
+    const bx  = OVL_X + 28 + i * 166;
+    const isArmor = rewardIds[i] === 'armor';
+    const st  = isArmor ? null : MINION_STATS[rewardIds[i]];
+    const hov  = mouse && mx_in(mouse, bx, mBY, 150, 70);
+    const ksel = keyboardSel === (isArmor ? 'armor' : `minion${i}`);
+    const [cr, cg, cb] = isArmor ? [110, 190, 255] : st.color;
 
     ctx.save();
     ctx.fillStyle = hov || ksel ? `rgba(${cr},${cg},${cb},0.22)` : `rgba(${cr},${cg},${cb},0.08)`;
     ctx.strokeStyle = ksel ? '#ffffff' : `rgb(${cr},${cg},${cb})`;
     ctx.lineWidth = hov || ksel ? 2 : 1;
     if (hov || ksel) { ctx.shadowBlur = 10; ctx.shadowColor = ksel ? '#ffffff' : `rgb(${cr},${cg},${cb})`; }
-    ctx.fillRect(bx, mBY, 170, 70);
-    ctx.strokeRect(bx, mBY, 170, 70);
+    ctx.fillRect(bx, mBY, 150, 70);
+    ctx.strokeRect(bx, mBY, 150, 70);
     ctx.shadowBlur = 0;
 
     ctx.fillStyle = `rgb(${cr},${cg},${cb})`;
     ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(mTypes[i].toUpperCase(), bx + 85, mBY + 18);
-    ctx.fillStyle = '#aaa';
-    ctx.font = '9px monospace';
-    ctx.fillText(`HP:${st.health}  SPD:${st.speed}`, bx + 85, mBY + 34);
-    ctx.fillText(st.desc, bx + 85, mBY + 48);
-    ctx.fillText('(Click to spawn)', bx + 85, mBY + 62);
+    if (isArmor) {
+      ctx.fillText('ARMOR', bx + 75, mBY + 18);
+      ctx.fillStyle = '#b9ddff';
+      ctx.font = '9px monospace';
+      ctx.fillText('+35 AR', bx + 75, mBY + 34);
+      ctx.fillText('Absorbs incoming damage', bx + 75, mBY + 48);
+      ctx.fillText('(Click to fortify)', bx + 75, mBY + 62);
+    } else {
+      ctx.fillText(rewardIds[i].toUpperCase(), bx + 75, mBY + 18);
+      ctx.fillStyle = '#aaa';
+      ctx.font = '9px monospace';
+      ctx.fillText(`HP:${st.health}  SPD:${st.speed}`, bx + 75, mBY + 34);
+      ctx.fillText(st.desc, bx + 75, mBY + 48);
+      ctx.fillText('(Click to spawn)', bx + 75, mBY + 62);
+    }
     ctx.restore();
     ctx.textAlign = 'left';
   }
@@ -541,7 +601,7 @@ export function renderCachePrompt(ctx, state, mouse, keyboardSel) {
   ctx.fillStyle = '#555';
   ctx.font = '10px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('Click or use Arrow Keys + Enter/Space to select. Highlighted nodes are available.', SCREEN_W/2, OVL_Y + 494);
+  ctx.fillText('Click or use Arrow Keys + Enter/Space to select. Highlighted nodes are available or upgradeable.', SCREEN_W/2, OVL_Y + 494);
   ctx.textAlign = 'left';
 }
 
@@ -588,7 +648,9 @@ export function renderEffects(ctx, state) {
       }
       case 'explode': {
         ctx.globalAlpha = frac * 0.72;
-        const cx = SCREEN_W / 2, cy = SCREEN_H / 2 - 20;
+        const proj = eff.worldX != null && eff.worldY != null ? projectWorld(eff.worldX, eff.worldY, state.player) : null;
+        const cx = proj ? proj.screenX : SCREEN_W / 2;
+        const cy = proj ? proj.topY + proj.sprH * 0.5 : SCREEN_H / 2 - 20;
         const maxR = 90;
         const r = maxR * (1 - frac);
         ctx.strokeStyle = '#ff6600';
@@ -597,6 +659,24 @@ export function renderEffects(ctx, state) {
         ctx.strokeStyle = '#ffcc00';
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2); ctx.stroke();
+        break;
+      }
+      case 'impact': {
+        ctx.globalAlpha = frac * 0.85;
+        const proj = eff.worldX != null && eff.worldY != null ? projectWorld(eff.worldX, eff.worldY, state.player) : null;
+        const cx = proj ? proj.screenX : SCREEN_W / 2;
+        const cy = proj ? proj.topY + proj.sprH * 0.5 : SCREEN_H / 2;
+        const r = 18 * (1 - frac) + 5;
+        ctx.strokeStyle = eff.color || '#55ddff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = eff.color || '#55ddff';
+        ctx.globalAlpha = frac * 0.4;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r * 0.45, 0, Math.PI * 2);
+        ctx.fill();
         break;
       }
       case 'railBeam': {
@@ -637,9 +717,71 @@ export function renderEffects(ctx, state) {
   }
 }
 
+export function renderProjectiles(ctx, state) {
+  if (!state.projectiles || state.projectiles.length === 0) return;
+  ctx.save();
+  for (const proj of state.projectiles) {
+    const dx = proj.x - state.player.x, dy = proj.y - state.player.y;
+    const minVisibleDist = proj.kind === 'bfg' ? 0.55 : 0.7;
+    if (dx*dx + dy*dy < minVisibleDist * minVisibleDist) continue;
+    if (!hasLOS(state.cells, state.map.w, state.map.h, state.player.x, state.player.y, proj.x, proj.y)) continue;
+    const screen = projectWorld(proj.x, proj.y, state.player);
+    if (!screen) continue;
+    const px = screen.screenX;
+    const py = screen.topY + screen.sprH * 0.5;
+    if (px < -40 || px > SCREEN_W + 40 || py < -40 || py > SCREEN_H + 40) continue;
+
+    const prev = projectWorld(proj.prevX, proj.prevY, state.player);
+    const stroke = proj.kind === 'rocket'
+      ? 'rgba(255,160,40,0.75)'
+      : proj.kind === 'plasma'
+        ? 'rgba(80,220,255,0.8)'
+        : 'rgba(255,120,40,0.85)';
+    const glow = proj.kind === 'rocket'
+      ? '#ff8800'
+      : proj.kind === 'plasma'
+        ? '#55ddff'
+        : '#ff6622';
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = Math.max(2, screen.sprH * 0.08);
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = glow;
+    if (prev) {
+      ctx.beginPath();
+      ctx.moveTo(prev.screenX, prev.topY + prev.sprH * 0.5);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+    }
+
+    const rad = proj.kind === 'bfg'
+      ? Math.max(5, Math.min(26, screen.sprH * 0.22))
+      : Math.max(3, Math.min(18, screen.sprH * 0.16));
+    const grd = ctx.createRadialGradient(px, py, rad * 0.2, px, py, rad);
+    if (proj.kind === 'plasma') {
+      grd.addColorStop(0, '#f3ffff');
+      grd.addColorStop(0.45, '#55ddff');
+      grd.addColorStop(1, 'rgba(60,180,255,0)');
+    } else if (proj.kind === 'bfg') {
+      grd.addColorStop(0, '#fff4cc');
+      grd.addColorStop(0.35, '#ff9944');
+      grd.addColorStop(0.7, '#ff4400');
+      grd.addColorStop(1, 'rgba(255,60,0,0)');
+    } else {
+      grd.addColorStop(0, '#fff7cc');
+      grd.addColorStop(0.4, '#ffbb33');
+      grd.addColorStop(1, 'rgba(255,80,0,0)');
+    }
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(px, py, rad, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 // ─── Enemy health bars ────────────────────────────────────────────────────────
 
-function projectEnemy(ex, ey, player) {
+function projectWorld(ex, ey, player) {
   const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
   const plX  = -dirY * FOV_TAN,        plY  = dirX * FOV_TAN;
   const sx = ex - player.x, sy = ey - player.y;
@@ -652,6 +794,16 @@ function projectEnemy(ex, ey, player) {
   const topY    = HALF_H - sprH / 2;
   return { screenX, topY, sprH, tY };
 }
+
+function projectEnemy(ex, ey, player) {
+  return projectWorld(ex, ey, player);
+}
+
+const VARIANT_BAR_COLORS = {
+  raider: '#ffcc66',
+  charger: '#ff6a3d',
+  sentinel: '#66bbff',
+};
 
 export function renderEnemyHealthBars(ctx, state) {
   const { player, enemies, map } = state;
@@ -671,7 +823,8 @@ export function renderEnemyHealthBars(ctx, state) {
     if (by < 4) continue;
 
     const frac   = Math.max(0, e.health / e.maxHealth);
-    const barCol = frac > 0.5 ? '#22cc44' : frac > 0.25 ? '#ffaa00' : '#ee2222';
+    const baseCol = VARIANT_BAR_COLORS[e.variant] || '#dddddd';
+    const barCol = frac > 0.5 ? baseCol : frac > 0.25 ? '#ffaa00' : '#ee2222';
 
     ctx.fillStyle = 'rgba(0,0,0,0.65)';
     ctx.fillRect(bx - 1, by - 1, barW + 2, barH + 2);
@@ -679,6 +832,13 @@ export function renderEnemyHealthBars(ctx, state) {
     ctx.fillRect(bx, by, barW, barH);
     ctx.fillStyle = barCol;
     ctx.fillRect(bx, by, barW * frac, barH);
+    if (sprH > 80 && e.variantLabel) {
+      ctx.fillStyle = baseCol;
+      ctx.font = 'bold 9px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(e.variantLabel, screenX, by - 3);
+      ctx.textAlign = 'left';
+    }
   }
   ctx.restore();
 }

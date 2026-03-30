@@ -6,12 +6,16 @@ import { renderHUD, renderCrosshair, renderMinimap,
          renderCachePrompt, hitTestCachePrompt,
          renderVictory, renderGameOver,
          renderClickToPlay, renderEffects, renderEnemyHealthBars,
-         renderWaveMessage, renderBossHealthBar, hitTestMenuButton, renderFloorTransition } from './ui.js';
+         renderWaveMessage, renderBossHealthBar, hitTestMenuButton, renderFloorTransition,
+         renderProjectiles } from './ui.js';
 import {
   createPlayer, createEnemy, createMinion, createCache, createExit, createHealthPack, createAltar,
   updateEntities, updateExploration, checkInteractions, shootPlayer, spawnMinion,
+  createConfiguredEnemy,
+  grantArmor,
 } from './entities.js';
-import { getUnlockableWeapons, weaponNodeState } from './weapons.js';
+import { getUnlockableWeapons, weaponNodeState, canUpgradeWeapon, applyWeaponUpgrade, getPlayerWeaponStats, isTechTreeMaxed } from './weapons.js';
+import { unlockAudio, playSfx, setAudioEnabled } from './audio.js';
 
 // ─── Canvas setup ─────────────────────────────────────────────────────────────
 
@@ -24,12 +28,29 @@ initRenderer(ctx);
 // ─── Game state ───────────────────────────────────────────────────────────────
 
 let state = null;
+let audioEnabled = true;
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
 document.addEventListener('keydown', (e) => {
+  unlockAudio().catch(() => {});
   if (!state) return;
   state.keys[e.code] = true;
+
+  if (e.code === 'KeyM') {
+    audioEnabled = !audioEnabled;
+    setAudioEnabled(audioEnabled);
+    try {
+      localStorage.setItem('theseus-audio-enabled', audioEnabled ? '1' : '0');
+    } catch {}
+    if (state.phase === 'playing' || state.phase === 'cachePrompt') {
+      state.waveMessage = {
+        text: audioEnabled ? 'AUDIO ONLINE' : 'AUDIO MUTED',
+        subtitle: audioEnabled ? 'PRESS M TO MUTE' : 'PRESS M TO RESTORE',
+        timer: 1.8,
+      };
+    }
+  }
 
   // Weapon switch 1–7
   if (e.code.startsWith('Digit')) {
@@ -52,7 +73,7 @@ document.addEventListener('keydown', (e) => {
   if (state.phase === 'cachePrompt') {
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) {
       e.preventDefault();
-      if (!state.cacheSelection) state.cacheSelection = 'pistol';
+      if (!state.cacheSelection) state.cacheSelection = getDefaultCacheSelection();
       const next = CACHE_NAV[state.cacheSelection]?.[e.code];
       if (next) state.cacheSelection = next;
     }
@@ -68,6 +89,7 @@ document.addEventListener('keyup',  (e) => { if (state) state.keys[e.code] = fal
 // Mouse look (pointer lock) — desktop only
 const isTouchDevice = navigator.maxTouchPoints > 0;
 canvas.addEventListener('click', () => {
+  unlockAudio().catch(() => {});
   if (!isTouchDevice && state?.phase === 'playing') canvas.requestPointerLock();
 });
 
@@ -94,6 +116,7 @@ document.addEventListener('mousemove', (e) => {
 });
 
 document.addEventListener('mousedown', (e) => {
+  unlockAudio().catch(() => {});
   if (!state) return;
   if (e.button === 0 && document.pointerLockElement === canvas && state.phase === 'playing') {
     shootPlayer(state);
@@ -111,12 +134,15 @@ document.addEventListener('mousedown', (e) => {
 
 // Keyboard shoot (Space)
 document.addEventListener('keydown', (e) => {
+  unlockAudio().catch(() => {});
   if (state?.phase === 'playing' && e.code === 'Space') shootPlayer(state);
 });
 
 function returnToMenu() {
   if (document.pointerLockElement === canvas) document.exitPointerLock();
   state = null;
+  lastPhaseAudio = null;
+  lastWaveAudioKey = null;
   canvas.style.display = 'none';
   showTouchUI(false);
   document.getElementById('setup').style.display = 'flex';
@@ -142,6 +168,7 @@ function showTouchUI(on) {
 // Fire button — hold for continuous fire
 touchFireBtn.addEventListener('touchstart', (e) => {
   e.preventDefault();
+  unlockAudio().catch(() => {});
   if (state?.phase === 'playing') {
     shootPlayer(state);
     fireInterval = setInterval(() => { if (state?.phase === 'playing') shootPlayer(state); }, 80);
@@ -153,6 +180,7 @@ touchFireBtn.addEventListener('touchcancel', () => clearInterval(fireInterval), 
 // Use button — simulates E key press
 touchUseBtn.addEventListener('touchstart', (e) => {
   e.preventDefault();
+  unlockAudio().catch(() => {});
   if (state) { state.keys['KeyE'] = true; setTimeout(() => { if (state) state.keys['KeyE'] = false; }, 120); }
 }, { passive: false });
 
@@ -253,21 +281,45 @@ const CACHE_NAV = {
   smg:     { ArrowUp: 'pistol',    ArrowDown: 'plasma',   ArrowLeft:  'shotgun' },
   rocket:  { ArrowUp: 'shotgun',   ArrowDown: 'bfg',      ArrowRight: 'plasma'  },
   plasma:  { ArrowUp: 'smg',       ArrowDown: 'railgun',  ArrowLeft:  'rocket'  },
-  bfg:     { ArrowUp: 'rocket',    ArrowDown: 'minion0',  ArrowRight: 'railgun' },
-  railgun: { ArrowUp: 'plasma',    ArrowDown: 'minion2',  ArrowLeft:  'bfg'     },
-  minion0: { ArrowUp: 'bfg',       ArrowRight: 'minion1' },
-  minion1: { ArrowUp: 'bfg',       ArrowLeft:  'minion0', ArrowRight: 'minion2' },
-  minion2: { ArrowUp: 'railgun',   ArrowLeft:  'minion1' },
+  bfg:     { ArrowUp: 'rocket',    ArrowDown: 'armor',    ArrowRight: 'railgun' },
+  railgun: { ArrowUp: 'plasma',    ArrowDown: 'armor',    ArrowLeft:  'bfg'     },
+  armor:   { ArrowUp: 'bfg',       ArrowLeft: 'minion2',  ArrowRight: 'minion0', ArrowDown: 'minion1' },
+  minion0: { ArrowUp: 'armor',     ArrowRight: 'minion1', ArrowLeft: 'armor' },
+  minion1: { ArrowUp: 'armor',     ArrowLeft:  'minion0', ArrowRight: 'minion2' },
+  minion2: { ArrowUp: 'armor',     ArrowLeft:  'minion1', ArrowRight: 'armor' },
 };
 
 const MINION_IDS = ['scout', 'guard', 'hunter'];
+
+function getDefaultCacheSelection() {
+  const unlockables = getUnlockableWeapons(state.player.weapons);
+  if (unlockables.length > 0) return unlockables[0];
+  if (isTechTreeMaxed(state.player.weapons)) return 'armor';
+  return 'pistol';
+}
 
 function applyCacheChoice(choice) {
   if (choice.type === 'weapon') {
     state.player.weapons.add(choice.id);
     state.player.activeWeapon = choice.id;
+    playSfx('reward');
+  } else if (choice.type === 'weaponUpgrade') {
+    const result = applyWeaponUpgrade(state.player, choice.id);
+    state.player.activeWeapon = choice.id;
+    const weaponName = getPlayerWeaponStats(state.player, choice.id).name;
+    state.waveMessage = {
+      text: `${weaponName.toUpperCase()} UPGRADED`,
+      subtitle: result.stat === 'damage' ? `+Damage  LV ${result.upgradeLevel}` : `+Fire Rate  LV ${result.upgradeLevel}`,
+      timer: 2.6,
+    };
+    playSfx('reward');
+  } else if (choice.type === 'armor') {
+    const armor = grantArmor(state.player, 30 + (state.floor || 1) * 5);
+    state.waveMessage = { text: 'ARMOR REPLENISHED', subtitle: `${armor}/${state.player.maxArmor}`, timer: 2.4 };
+    playSfx('pickup');
   } else {
     spawnMinion(state, choice.id);
+    playSfx('reward');
   }
   state.phase = 'playing';
   state.pendingCacheIdx = null;
@@ -289,9 +341,12 @@ function handleCacheKeyboard() {
   if (sel.startsWith('minion')) {
     const idx = parseInt(sel.replace('minion', ''));
     applyCacheChoice({ type: 'minion', id: MINION_IDS[idx] });
+  } else if (sel === 'armor') {
+    applyCacheChoice({ type: 'armor' });
   } else {
-    if (weaponNodeState(sel, state.player.weapons) !== 'available') return;
-    applyCacheChoice({ type: 'weapon', id: sel });
+    const nodeState = weaponNodeState(sel, state.player.weapons);
+    if (nodeState === 'available') applyCacheChoice({ type: 'weapon', id: sel });
+    else if (canUpgradeWeapon(state.player, sel)) applyCacheChoice({ type: 'weaponUpgrade', id: sel });
   }
 }
 
@@ -316,12 +371,29 @@ document.addEventListener('keyup', (e) => {
 // ─── Game loop ────────────────────────────────────────────────────────────────
 
 let lastTime = performance.now();
+let lastPhaseAudio = null;
+let lastWaveAudioKey = null;
 
 function gameLoop(timestamp) {
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
   lastTime = timestamp;
 
   if (state) {
+    if (state.phase !== lastPhaseAudio) {
+      if (state.phase === 'victory') playSfx('victory');
+      if (state.phase === 'gameOver') playSfx('game_over');
+      if (state.phase === 'floorAdvance') playSfx('floor');
+      lastPhaseAudio = state.phase;
+    }
+    const waveAudioKey = state.waveMessage ? `${state.waveMessage.text}|${state.waveMessage.subtitle || ''}` : null;
+    if (waveAudioKey && waveAudioKey !== lastWaveAudioKey) {
+      if (state.waveMessage.isBoss) playSfx('boss');
+      else if (state.waveMessage.isBless) playSfx('altar');
+      else if (state.waveMessage.text?.startsWith('FLOOR')) playSfx('floor');
+      else playSfx('wave');
+    }
+    lastWaveAudioKey = waveAudioKey;
+
     if (state.phase === 'floorAdvance') {
       if (state.floorAdvanceTimer == null) {
         state.floor = (state.floor || 1) + 1;
@@ -353,6 +425,7 @@ function gameLoop(timestamp) {
 
     // Render
     renderScene(ctx, state);
+    if (state.phase === 'playing') renderProjectiles(ctx, state);
 
     if (state.phase === 'playing' || state.phase === 'cachePrompt') {
       renderCrosshair(ctx);
@@ -361,14 +434,14 @@ function gameLoop(timestamp) {
       renderEffects(ctx, state);
       renderEnemyHealthBars(ctx, state);
       if (state.waveMessage) renderWaveMessage(ctx, state.waveMessage);
-      const boss = state.enemies?.find(e => e.isBoss && !e.dead);
+      const boss = state.activeBoss;
       if (boss) renderBossHealthBar(ctx, boss);
     }
     if (state.phase === 'playing' && !isTouchDevice && document.pointerLockElement !== canvas) {
       renderClickToPlay(ctx);
     }
     if (state.phase === 'cachePrompt') {
-      if (state.cacheSelection == null) state.cacheSelection = 'pistol';
+      if (state.cacheSelection == null) state.cacheSelection = getDefaultCacheSelection();
       renderCachePrompt(ctx, state, state.mouse, state.cacheSelection);
     }
     if (state.phase === 'floorAdvance') renderFloorTransition(ctx, state);
@@ -388,6 +461,13 @@ const assetsPromise = loadAssets().then(() => { assetsReady = true; }).catch(err
 requestAnimationFrame(gameLoop);
 window.startGame = startGame;   // register immediately so button works while assets load
 
+try {
+  audioEnabled = localStorage.getItem('theseus-audio-enabled') !== '0';
+} catch {
+  audioEnabled = true;
+}
+setAudioEnabled(audioEnabled);
+
 async function startGame(settings) {
   if (!assetsReady) await assetsPromise;
   document.getElementById('setup').style.display = 'none';
@@ -401,7 +481,7 @@ async function startGame(settings) {
     try {
       msg.textContent  = 'GENERATING MAP...';
       fill.style.width = '30%';
-      const mapData = generateMap(settings.mapSize, settings.numEnemies);
+      const mapData = generateMap(settings.mapSize, settings.numEnemies, 1);
 
       fill.style.width = '70%';
       msg.textContent  = 'SPAWNING ENTITIES...';
@@ -410,7 +490,7 @@ async function startGame(settings) {
       requestAnimationFrame(() => {
         try {
           const player      = createPlayer(mapData.startPos);
-          const enemies     = mapData.enemyPositions.map((p, i) => createEnemy(p.x, p.y, i));
+          const enemies     = mapData.enemyPositions.map((p, i) => createConfiguredEnemy(p, i, 1));
           const caches      = mapData.cachePositions.map((p, i) => createCache(p.x, p.y, i));
           const exit        = createExit(mapData.exitPos.x, mapData.exitPos.y);
           const healthPacks = mapData.healthPackPositions.map(p => createHealthPack(p.x, p.y, p.size));
@@ -423,7 +503,7 @@ async function startGame(settings) {
             map: { cells: mapData.cells, w: mapData.w, h: mapData.h, rooms: mapData.rooms },
             player, enemies, minions: [], caches, exit, healthPacks, altars, explored,
             settings, pendingCacheIdx: null, keys: {}, mouse: null,
-            effects: [], wave: 1, waveMessage: null,
+            effects: [], projectiles: [], wave: 1, waveMessage: null,
             floor: 1, exitOpen: false, nearAltar: null, defeatedBosses: [],
           };
 
@@ -449,7 +529,7 @@ async function startGame(settings) {
 }
 
 function generateNextFloor(state) {
-  const mapData = generateMap(state.settings.mapSize, state.settings.numEnemies);
+  const mapData = generateMap(state.settings.mapSize, state.settings.numEnemies, state.floor);
   const p = state.player;
   p.x = mapData.startPos.x;
   p.y = mapData.startPos.y;
@@ -458,17 +538,17 @@ function generateNextFloor(state) {
   state.cells     = mapData.cells;
   state.map       = { cells: mapData.cells, w: mapData.w, h: mapData.h, rooms: mapData.rooms };
   state.explored  = new Uint8Array(mapData.w * mapData.h);
-  state.enemies   = mapData.enemyPositions.map((pos, i) => createEnemy(pos.x, pos.y, i));
+  state.enemies   = mapData.enemyPositions.map((pos, i) => createConfiguredEnemy(pos, i, state.floor));
   state.caches    = mapData.cachePositions.map((pos, i) => createCache(pos.x, pos.y, i));
   state.exit      = createExit(mapData.exitPos.x, mapData.exitPos.y);
   state.healthPacks = mapData.healthPackPositions.map(pos => createHealthPack(pos.x, pos.y, pos.size));
   state.altars    = (mapData.altarPositions || []).map(pos => createAltar(pos.x, pos.y, pos.godId));
   state.minions   = [];
   state.effects   = [];
+  state.projectiles = [];
   state.wave      = 1;
   state.exitOpen  = false;
   state.nearAltar = null;
   const floorSubs = { 2: 'THE LABYRINTH DEEPENS', 3: 'THE REALM OF THE DEAD AWAITS' };
   state.waveMessage = { text: `FLOOR  ${state.floor}`, subtitle: floorSubs[state.floor] || '', timer: 3.5 };
 }
-

@@ -1,28 +1,74 @@
 // pathfinding.js — A* on flat Uint8Array grid
 
+class MinHeap {
+  constructor() {
+    this.items = [];
+  }
+
+  push(node) {
+    const items = this.items;
+    items.push(node);
+    let i = items.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (items[p].f <= node.f) break;
+      items[i] = items[p];
+      i = p;
+    }
+    items[i] = node;
+  }
+
+  pop() {
+    const items = this.items;
+    if (items.length === 0) return null;
+    const top = items[0];
+    const last = items.pop();
+    if (items.length === 0) return top;
+
+    let i = 0;
+    while (true) {
+      let left = i * 2 + 1;
+      let right = left + 1;
+      if (left >= items.length) break;
+
+      let child = left;
+      if (right < items.length && items[right].f < items[left].f) child = right;
+      if (items[child].f >= last.f) break;
+      items[i] = items[child];
+      i = child;
+    }
+    items[i] = last;
+    return top;
+  }
+
+  get length() {
+    return this.items.length;
+  }
+}
+
 export function findPath(cells, mapW, mapH, x1, y1, x2, y2) {
   const sx = Math.floor(x1), sy = Math.floor(y1);
   const gx = Math.floor(x2), gy = Math.floor(y2);
   if (sx === gx && sy === gy) return [];
+  if (gx < 0 || gy < 0 || gx >= mapW || gy >= mapH) return [];
   if (cells[gy * mapW + gx] !== 0) return [];
 
   const key  = (x, y) => y * mapW + x;
   const h    = (x, y) => Math.abs(x - gx) + Math.abs(y - gy);
   const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
 
-  const open    = [{ x: sx, y: sy, g: 0, f: h(sx, sy) }];
+  const open    = new MinHeap();
   const from    = new Map();
   const gScore  = new Map([[key(sx, sy), 0]]);
+  const closed  = new Set();
+  open.push({ x: sx, y: sy, g: 0, f: h(sx, sy) });
 
   let iter = 0;
-  while (open.length > 0 && iter++ < 1500) {
-    // Pop lowest f — swap with last then pop (O(1) remove vs O(n) splice)
-    let mi = 0;
-    for (let i = 1; i < open.length; i++) if (open[i].f < open[mi].f) mi = i;
-    const cur = open[mi];
-    open[mi] = open[open.length - 1];
-    open.pop();
+  while (open.length > 0 && iter++ < 3000) {
+    const cur = open.pop();
     const ck  = key(cur.x, cur.y);
+    if (closed.has(ck)) continue;
+    closed.add(ck);
 
     if (cur.x === gx && cur.y === gy) {
       // Reconstruct path (world-space tile centres)
@@ -43,6 +89,7 @@ export function findPath(cells, mapW, mapH, x1, y1, x2, y2) {
 
       const ng = (gScore.get(ck) ?? Infinity) + 1;
       const nk = key(nx, ny);
+      if (closed.has(nk) && ng >= (gScore.get(nk) ?? Infinity)) continue;
       if (ng < (gScore.get(nk) ?? Infinity)) {
         from.set(nk, cur);
         gScore.set(nk, ng);

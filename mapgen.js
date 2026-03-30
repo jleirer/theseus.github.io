@@ -107,7 +107,62 @@ function roomDist(a, b) {
   return Math.hypot(a.x + a.w/2 - b.x - b.w/2, a.y + a.h/2 - b.y - b.h/2);
 }
 
-export function generateMap(sizeKey, numEnemies) {
+function roomCenter(room) {
+  return { x: room.x + room.w / 2 + 0.5, y: room.y + room.h / 2 + 0.5 };
+}
+
+function classifyRooms(rooms, startRoom, exitRoom) {
+  return rooms.map((room, index) => {
+    if (room === startRoom) return { ...room, roomType: 'start', roomIndex: index };
+    if (room === exitRoom) return { ...room, roomType: 'boss', roomIndex: index };
+
+    const area = room.w * room.h;
+    let roomType = 'skirmish';
+    if (area >= 55) roomType = 'arena';
+    else if (Math.min(room.w, room.h) <= 4) roomType = 'chokepoint';
+    else if (Math.random() < 0.28) roomType = 'guarded';
+    return { ...room, roomType, roomIndex: index };
+  });
+}
+
+function pickEncounterVariant(roomType, floor) {
+  const roll = Math.random();
+  if (roomType === 'cacheGuard') return roll < 0.7 ? 'sentinel' : 'raider';
+  if (roomType === 'chokepoint') return roll < 0.65 ? 'sentinel' : 'raider';
+  if (roomType === 'arena') return floor >= 2 && roll < 0.55 ? 'charger' : roll < 0.82 ? 'raider' : 'sentinel';
+  if (roomType === 'guarded') return floor >= 2 && roll < 0.45 ? 'sentinel' : 'raider';
+  if (floor >= 3 && roll < 0.38) return 'charger';
+  if (floor >= 2 && roll < 0.22) return 'sentinel';
+  return 'raider';
+}
+
+function buildCombatRoomPool(rooms) {
+  const pool = [];
+  for (const room of rooms) {
+    if (room.roomType === 'start' || room.roomType === 'boss') continue;
+    const weight = room.roomType === 'arena'
+      ? 3
+      : room.roomType === 'cacheGuard'
+        ? 3
+        : room.roomType === 'guarded'
+          ? 2
+          : room.roomType === 'chokepoint'
+            ? 1
+            : 2;
+    for (let i = 0; i < weight; i++) pool.push(room);
+  }
+  return pool.length > 0 ? pool : rooms.filter(r => r.roomType !== 'start' && r.roomType !== 'boss');
+}
+
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function isFarEnough(pos, others, minDist) {
+  return others.every(other => dist(pos, other) >= minDist);
+}
+
+export function generateMap(sizeKey, numEnemies, floor = 1) {
   const { w, h } = MAP_SIZES[sizeKey];
   const cells = new Uint8Array(w * h).fill(CELL_WALL);
 
@@ -138,65 +193,89 @@ export function generateMap(sizeKey, numEnemies) {
     if (d > maxDist) { maxDist = d; exitRoom = r; }
   }
 
-  const rc = (r) => ({ x: r.x + r.w / 2 + 0.5, y: r.y + r.h / 2 + 0.5 });
+  const typedRooms = classifyRooms(rooms, startRoom, exitRoom);
+  const startRoomData = typedRooms.find(r => r.x === startRoom.x && r.y === startRoom.y && r.w === startRoom.w && r.h === startRoom.h) || typedRooms[0];
+  const exitRoomData = typedRooms.find(r => r.x === exitRoom.x && r.y === exitRoom.y && r.w === exitRoom.w && r.h === exitRoom.h) || typedRooms[typedRooms.length - 1];
 
-  const startPos = { ...rc(startRoom), angle: Math.random() * Math.PI * 2 };
-  const exitPos  = rc(exitRoom);
-
-  // Enemies — spread across rooms away from start
-  const enemyPositions = [];
-  for (let i = 0; i < numEnemies; i++) {
-    const ri = 1 + (i % Math.max(1, rooms.length - 1));
-    const room = rooms[Math.min(ri, rooms.length - 1)];
-    enemyPositions.push({
-      x: room.x + 1 + Math.random() * Math.max(0, room.w - 2) + 0.5,
-      y: room.y + 1 + Math.random() * Math.max(0, room.h - 2) + 0.5,
-    });
-  }
+  const startPos = { ...roomCenter(startRoomData), angle: Math.random() * Math.PI * 2 };
+  const exitPos  = roomCenter(exitRoomData);
 
   // Caches — one per ~3 rooms, min 2, not in start room
-  const numCaches = Math.max(2, Math.floor(rooms.length / 3));
+  const numCaches = Math.max(2, Math.floor(typedRooms.length / 3));
   const cachePositions = [];
   const usedIdx = new Set([0]);
   for (let i = 0; i < numCaches; i++) {
     let ri = 0, attempts = 0;
-    while (usedIdx.has(ri) && attempts++ < 30) ri = Math.floor(Math.random() * rooms.length);
+    while (usedIdx.has(ri) && attempts++ < 30) ri = Math.floor(Math.random() * typedRooms.length);
     usedIdx.add(ri);
-    cachePositions.push(rc(rooms[ri]));
+    const room = typedRooms[ri];
+    if (room.roomType === 'skirmish' || room.roomType === 'guarded') room.roomType = 'cacheGuard';
+    cachePositions.push({ ...roomCenter(room), roomIndex: room.roomIndex });
+  }
+
+  // Enemies — weighted toward arenas / guarded rooms to create more intentional packs
+  const enemyPositions = [];
+  const combatRoomPool = buildCombatRoomPool(typedRooms);
+  const eliteCandidates = typedRooms.filter(r => ['arena', 'guarded', 'cacheGuard'].includes(r.roomType));
+  const eliteRoomIndex = floor >= 2 && eliteCandidates.length > 0
+    ? eliteCandidates[Math.floor(Math.random() * eliteCandidates.length)].roomIndex
+    : -1;
+  for (let i = 0; i < numEnemies; i++) {
+    const room = combatRoomPool[Math.floor(Math.random() * combatRoomPool.length)] || typedRooms[Math.min(i + 1, typedRooms.length - 1)];
+    const variant = pickEncounterVariant(room.roomType, floor);
+    const elite = room.roomIndex === eliteRoomIndex && !enemyPositions.some(e => e.elite);
+    enemyPositions.push({
+      x: room.x + 1 + Math.random() * Math.max(0, room.w - 2) + 0.5,
+      y: room.y + 1 + Math.random() * Math.max(0, room.h - 2) + 0.5,
+      variant,
+      elite,
+      roomType: room.roomType,
+      roomIndex: room.roomIndex,
+    });
   }
 
   // Health packs — small packs in some rooms, 1 large pack
-  const numSmallPacks = Math.max(1, Math.floor(rooms.length / 4));
+  const numSmallPacks = Math.max(1, Math.floor(typedRooms.length / 4));
   const healthPackPositions = [];
   const hpUsed = new Set([0]);
 
   for (let i = 0; i < numSmallPacks; i++) {
     let ri = 0, att = 0;
-    while (hpUsed.has(ri) && att++ < 30) ri = Math.floor(Math.random() * rooms.length);
+    while (hpUsed.has(ri) && att++ < 30) ri = Math.floor(Math.random() * typedRooms.length);
     hpUsed.add(ri);
-    const r = rooms[ri];
+    const r = typedRooms[ri];
     healthPackPositions.push({ x: r.x + r.w * 0.25 + 0.5, y: r.y + r.h * 0.75 + 0.5, size: 'small' });
   }
 
   // Large pack: its own room, offset from center so it doesn't overlap with a cache
   let largeRi = 0, latt = 0;
-  while (hpUsed.has(largeRi) && latt++ < 30) largeRi = Math.floor(Math.random() * rooms.length);
-  const lr = rooms[largeRi];
+  while (hpUsed.has(largeRi) && latt++ < 30) largeRi = Math.floor(Math.random() * typedRooms.length);
+  const lr = typedRooms[largeRi];
   healthPackPositions.push({ x: lr.x + lr.w / 2 + 0.5, y: lr.y + lr.h / 2 + 0.5, size: 'large' });
 
   // Altars — 2-3 per floor in unique rooms (not start room)
   const altarGodIds = ['mars', 'mercury', 'vulcan', 'apollo', 'minerva', 'fortuna'];
   const numAltars = 2 + Math.floor(Math.random() * 2);
   const altarPositions = [];
-  const altarUsed = new Set([0]);
+  const altarUsed = new Set([0, ...cachePositions.map(p => p.roomIndex)]);
+  const MIN_CACHE_ALTAR_DIST = 8;
   for (let i = 0; i < numAltars; i++) {
-    let ri = 0, att = 0;
-    while (altarUsed.has(ri) && att++ < 30) ri = Math.floor(Math.random() * rooms.length);
-    altarUsed.add(ri);
-    const r = rooms[ri];
+    let ri = 0, att = 0, chosen = null;
+    while (att++ < 40) {
+      ri = Math.floor(Math.random() * typedRooms.length);
+      if (altarUsed.has(ri)) continue;
+      const r = typedRooms[ri];
+      const pos = { x: r.x + r.w / 2 + 0.5, y: r.y + r.h / 2 + 0.5, roomIndex: ri };
+      if (!isFarEnough(pos, cachePositions, MIN_CACHE_ALTAR_DIST)) continue;
+      if (!isFarEnough(pos, altarPositions, 6)) continue;
+      chosen = pos;
+      break;
+    }
+    if (!chosen) continue;
+    altarUsed.add(chosen.roomIndex);
     const godId = altarGodIds[Math.floor(Math.random() * altarGodIds.length)];
-    altarPositions.push({ x: r.x + r.w / 2 + 0.5, y: r.y + r.h / 2 + 0.5, godId });
+    altarPositions.push({ x: chosen.x, y: chosen.y, godId });
   }
 
-  return { cells, w, h, rooms, startPos, exitPos, enemyPositions, cachePositions, healthPackPositions, altarPositions };
+  return { cells, w, h, rooms: typedRooms, startPos, exitPos, enemyPositions, cachePositions, healthPackPositions, altarPositions };
 }
